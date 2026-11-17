@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solara Bay — an open-world crime story</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c1118; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; }
+  .panel { background: rgba(10, 14, 20, 0.62); border: 1px solid rgba(255,255,255,0.16); border-radius: 8px; }
+  #topleft { position: absolute; top: 14px; left: 14px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
+  #wanted { font-size: 26px; letter-spacing: 4px; line-height: 1; text-shadow: 0 2px 6px #000; }
+  #health-row { display: flex; align-items: center; gap: 8px; }
+  #health-bar { width: 150px; height: 10px; background: rgba(255,255,255,0.18); border-radius: 5px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #58c96b; }
+  #health-text { font-size: 13px; font-weight: 700; }
+  #money { font-size: 22px; font-weight: 800; color: #7ee787; text-shadow: 0 2px 6px #000; }
+  #mission { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 10px 18px; text-align: center; max-width: 560px; }
+  #mission-title { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ffd23c; }
+  #objective { font-size: 15px; margin-top: 3px; }
+  #toast { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); padding: 8px 16px; font-size: 15px; opacity: 0; transition: opacity 0.4s; max-width: 640px; text-align: center; }
+  #banner { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity 0.5s; }
+  #banner-title { font-size: 44px; font-weight: 900; letter-spacing: 3px; color: #ffd23c; text-shadow: 0 3px 14px #000; }
+  #banner-sub { font-size: 17px; margin-top: 6px; text-shadow: 0 2px 8px #000; }
+  #minimap { position: absolute; left: 14px; bottom: 14px; border: 2px solid rgba(255,255,255,0.25); border-radius: 50%; background: #10151c; }
+  #bottomright { position: absolute; right: 16px; bottom: 14px; text-align: right; }
+  #speed { font-size: 30px; font-weight: 800; text-shadow: 0 2px 8px #000; }
+  #hint { font-size: 12px; color: rgba(255,255,255,0.75); margin-top: 4px; text-shadow: 0 1px 4px #000; }
+  #crosshair { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 4px #000; display: none; }
+  .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, rgba(8,20,36,0.88), rgba(40,16,8,0.82)); color: #fff; pointer-events: auto; z-index: 10; }
+  .screen-inner { max-width: 620px; padding: 34px 40px; text-align: center; background: rgba(8,12,18,0.72); border: 1px solid rgba(255,255,255,0.18); border-radius: 14px; }
+  .screen h1 { font-size: 52px; margin: 0; letter-spacing: 6px; color: #ffd23c; text-shadow: 0 4px 18px #000; }
+  .screen h2 { font-size: 15px; font-weight: 600; color: #9fd0e8; margin: 8px 0 0; letter-spacing: 1px; }
+  .screen p { font-size: 15px; line-height: 1.55; color: #e8eef4; }
+  .controls { text-align: left; display: inline-block; font-size: 14px; line-height: 1.9; color: #d5dde6; }
+  .controls b { color: #ffd23c; display: inline-block; min-width: 110px; }
+  .big-btn { pointer-events: auto; cursor: pointer; margin-top: 18px; padding: 13px 42px; font-size: 19px; font-weight: 800; letter-spacing: 2px; color: #14100a; background: #ffd23c; border: none; border-radius: 9px; }
+  .big-btn:hover { background: #ffe06a; }
+  .ghost-btn { pointer-events: auto; cursor: pointer; margin-top: 12px; margin-left: 10px; padding: 11px 26px; font-size: 15px; font-weight: 700; color: #fff; background: transparent; border: 1px solid rgba(255,255,255,0.5); border-radius: 9px; }
+  #end-title { font-size: 46px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game" aria-label="Solara Bay: an open-world crime game. Explore the city on foot and by car, take on missions and lose the police."></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+<div id="hud">
+  <div id="topleft" class="panel">
+    <div id="wanted">☆☆☆</div>
+    <div id="health-row"><div id="health-bar"><div id="health-fill"></div></div><span id="health-text">100</span></div>
+    <div id="money">$150</div>
+  </div>
+  <div id="mission" class="panel"><div id="mission-title">Wheels Up</div><div id="objective">Steal a car (E near a parked car)</div></div>
+  <div id="toast" class="panel"></div>
+  <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
+  <canvas id="minimap" width="190" height="190"></canvas>
+  <div id="bottomright"><div id="speed"></div><div id="hint"></div></div>
+  <div id="crosshair"></div>
+</div>
+
+<div id="title-screen" class="screen">
+  <div class="screen-inner">
+    <h1>SOLARA BAY</h1>
+    <h2>AN OPEN-WORLD CRIME STORY</h2>
+    <p>Dante Cole is out of luck and into debt. Rosa Delgado, who runs the garage on Marlin Street, offers him a way out: three jobs, one night, no questions. Steal the wheels, move the package, lose the heat — and walk away clean.</p>
+    <div class="controls">
+      <div><b>W A S D</b> Move / drive</div>
+      <div><b>Mouse</b> Look (click to lock)</div>
+      <div><b>Shift</b> Run &nbsp;·&nbsp; <b>E</b> Enter / exit car</div>
+      <div><b>Click</b> Shoot &nbsp;·&nbsp; <b>R</b> Reload</div>
+      <div><b>Space</b> Handbrake &nbsp;·&nbsp; <b>P</b> Pause &nbsp;·&nbsp; <b>M</b> Mute</div>
+    </div>
+    <br>
+    <button id="start-btn" class="big-btn">START THE NIGHT</button>
+    <button id="continue-btn" class="ghost-btn">Continue</button>
+  </div>
+</div>
+
+<div id="pause-screen" class="screen" style="display:none">
+  <div class="screen-inner">
+    <h1 style="font-size:38px">PAUSED</h1>
+    <p>Solara Bay waits. The cops do not.</p>
+    <button id="resume-btn" class="big-btn">RESUME</button>
+    <button id="restart-btn" class="ghost-btn">Restart night</button>
+  </div>
+</div>
+
+<div id="end-screen" class="screen" style="display:none">
+  <div class="screen-inner">
+    <h1 id="end-title">WASTED</h1>
+    <p id="end-text"></p>
+    <button id="again-btn" class="big-btn">TRY AGAIN</button>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
