@@ -1,127 +1,135 @@
-// Dante Cole on foot: a simple articulated figure, third-person camera, enter/exit cars.
-import * as THREE from 'three';
-import { PLAYER } from './config.js';
+// Solara Bay — the player on foot. One job: walk Dante Cole around the city,
+// enter and exit cars, and hold the pistol.
 
-function limb(color, w, h, d) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color, roughness: 0.8 }));
-  mesh.castShadow = true;
-  return mesh;
+import * as THREE from 'three';
+import { CFG } from './config.js';
+import { resolveCollisions, clampPlayable, groundHeightAt } from './world.js';
+
+// Build Dante: a simple articulated figure (torso, head, limbs) in a teal
+// jacket, so he reads clearly at a distance and on the minimap.
+export function buildPlayerMesh() {
+  const g = new THREE.Group();
+  const jacket = new THREE.MeshLambertMaterial({ color: 0x0e7a6b });
+  const skin = new THREE.MeshLambertMaterial({ color: 0xd9a066 });
+  const pants = new THREE.MeshLambertMaterial({ color: 0x2c3e50 });
+  const hair = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+
+  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.36), jacket);
+  torso.position.y = 1.15;
+  torso.castShadow = true;
+  g.add(torso);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), skin);
+  head.position.y = 1.78;
+  head.castShadow = true;
+  g.add(head);
+  const hairM = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.16, 0.44), hair);
+  hairM.position.y = 2.02;
+  g.add(hairM);
+  const legs = [];
+  for (const lx of [-0.16, 0.16]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.75, 0.26), pants);
+    leg.position.set(lx, 0.38, 0);
+    leg.castShadow = true;
+    g.add(leg);
+    legs.push(leg);
+  }
+  const arms = [];
+  for (const ax of [-0.42, 0.42]) {
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.7, 0.22), jacket);
+    arm.position.set(ax, 1.15, 0);
+    arm.castShadow = true;
+    g.add(arm);
+    arms.push(arm);
+  }
+  return { group: g, legs, arms };
 }
 
-export function createPlayer(scene) {
-  const group = new THREE.Group();
-  const jacket = new THREE.MeshStandardMaterial({ color: 0x7a2e2e, roughness: 0.8 });
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.72, 0.34), jacket);
-  torso.position.y = 1.12;
-  torso.castShadow = true;
-  group.add(torso);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), new THREE.MeshStandardMaterial({ color: 0xc99a76, roughness: 0.7 }));
-  head.position.y = 1.68;
-  head.castShadow = true;
-  group.add(head);
-  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.12, 0.36), new THREE.MeshStandardMaterial({ color: 0x1a1a1a }));
-  hair.position.y = 1.88;
-  group.add(hair);
-  const legL = limb(0x2c3e55, 0.24, 0.78, 0.28);
-  legL.position.set(-0.16, 0.39, 0);
-  const legR = limb(0x2c3e55, 0.24, 0.78, 0.28);
-  legR.position.set(0.16, 0.39, 0);
-  group.add(legL);
-  group.add(legR);
-  const armL = limb(0x7a2e2e, 0.18, 0.62, 0.2);
-  armL.position.set(-0.42, 1.12, 0);
-  const armR = limb(0x7a2e2e, 0.18, 0.62, 0.2);
-  armR.position.set(0.42, 1.12, 0);
-  group.add(armL);
-  group.add(armR);
-  scene.add(group);
-
-  const player = {
-    group,
-    pos: new THREE.Vector3(-84, 0, -84),
-    heading: 0,
-    speed: 0,
-    health: PLAYER.health,
-    inCar: false,
-    car: null,
-    walkPhase: 0,
-    yaw: Math.PI * 0.75,
-    pitch: 0.32,
-  };
-
-  function update(dt, input, world, cars) {
-    if (player.inCar) {
-      group.visible = false;
-      return;
-    }
-    group.visible = true;
-    const look = input.look();
-    player.yaw -= look.dx * 0.0032;
-    player.pitch = Math.max(-0.1, Math.min(0.9, player.pitch + look.dy * 0.0022));
-    const axis = input.axis();
-    const moving = axis.x !== 0 || axis.y !== 0;
-    const speed = input.run() ? PLAYER.runSpeed : PLAYER.walkSpeed;
-    if (moving) {
-      const forward = { x: -Math.sin(player.yaw), z: -Math.cos(player.yaw) };
-      const right = { x: -forward.z, z: forward.x };
-      let mx = forward.x * axis.y + right.x * axis.x;
-      let mz = forward.z * axis.y + right.z * axis.x;
-      const len = Math.hypot(mx, mz) || 1;
-      mx /= len;
-      mz /= len;
-      player.pos.x += mx * speed * dt;
-      player.pos.z += mz * speed * dt;
-      player.speed = speed;
-      const targetHeading = Math.atan2(mx, mz);
-      let diff = targetHeading - player.heading;
-      while (diff > Math.PI) diff -= Math.PI * 2;
-      while (diff < -Math.PI) diff += Math.PI * 2;
-      player.heading += diff * Math.min(1, dt * 10);
-      player.walkPhase += dt * speed * 1.6;
-      const swing = Math.sin(player.walkPhase) * 0.55;
-      legL.rotation.x = swing;
-      legR.rotation.x = -swing;
-      armL.rotation.x = -swing * 0.7;
-      armR.rotation.x = swing * 0.7;
-    } else {
-      player.speed = 0;
-      legL.rotation.x *= 0.8;
-      legR.rotation.x *= 0.8;
-      armL.rotation.x *= 0.8;
-      armR.rotation.x *= 0.8;
-    }
-    world.collideCircle(player.pos, PLAYER.radius);
-    // Do not walk through cars.
-    for (const car of cars) {
-      const dx = player.pos.x - car.pos.x;
-      const dz = player.pos.z - car.pos.z;
-      const d = Math.hypot(dx, dz);
-      const min = 2.4;
-      if (d < min && d > 0.001) {
-        player.pos.x = car.pos.x + (dx / d) * min;
-        player.pos.z = car.pos.z + (dz / d) * min;
-      }
-    }
-    group.position.copy(player.pos);
-    group.rotation.y = player.heading;
+export class Player {
+  constructor(scene, x, z) {
+    const mesh = buildPlayerMesh();
+    this.group = mesh.group;
+    this.legs = mesh.legs;
+    this.arms = mesh.arms;
+    scene.add(this.group);
+    this.x = x;
+    this.z = z;
+    this.heading = 0; // facing, radians
+    this.health = CFG.playerMaxHealth;
+    this.inCar = null; // Car instance when driving
+    this.walkPhase = 0;
+    this.group.position.set(x, 0, z);
   }
 
-  /** Third-person camera: behind the player (or the car), mouse orbit. */
-  function updateCamera(camera, dt) {
-    const target = player.inCar && player.car ? player.car.pos : player.pos;
-    const dist = player.inCar ? 10.5 : 7.5;
-    const height = player.inCar ? 3.6 : 2.6;
-    const cx = target.x + Math.sin(player.yaw) * dist * Math.cos(player.pitch);
-    const cz = target.z + Math.cos(player.yaw) * dist * Math.cos(player.pitch);
-    const cy = (player.inCar ? 1.2 : 1.6) + height * Math.sin(player.pitch) + (player.inCar ? 1.4 : 0.4);
-    camera.position.set(cx, cy, cz);
-    camera.lookAt(target.x, target.y + 1.5, target.z);
+  // Walk relative to the camera yaw. Returns true when actually moving.
+  update(dt, axes, camYaw, colliders, running) {
+    if (this.inCar) return false;
+    const speed = running ? CFG.runSpeed : CFG.walkSpeed;
+    // Forward is camera yaw; strafe is perpendicular.
+    const fx = Math.sin(camYaw);
+    const fz = Math.cos(camYaw);
+    const rx = Math.cos(camYaw);
+    const rz = -Math.sin(camYaw);
+    let mx = fx * axes.y + rx * axes.x;
+    let mz = fz * axes.y + rz * axes.x;
+    const len = Math.hypot(mx, mz);
+    if (len < 0.01) {
+      this.walkPhase *= 0.9;
+      this.syncLimbs(0);
+      return false;
+    }
+    mx /= len;
+    mz /= len;
+    this.heading = Math.atan2(mx, mz);
+    let nx = this.x + mx * speed * dt;
+    let nz = this.z + mz * speed * dt;
+    const r = resolveCollisions(colliders, nx, nz, 0.7);
+    nx = r.x;
+    nz = r.z;
+    const cl = clampPlayable(nx, nz);
+    this.x = cl.x;
+    this.z = cl.z;
+    this.walkPhase += dt * speed * 1.4;
+    this.syncLimbs(1);
+    this.group.position.set(this.x, groundHeightAt(this.x, this.z), this.z);
+    this.group.rotation.y = this.heading;
+    return true;
   }
 
-  // Return the player object itself (not a spread copy): the game, the shots and the
-  // camera all write yaw/pitch/inCar/car on this object, and update/updateCamera must
-  // read those same writes. A spread copy silently kept the initial yaw and inCar=false.
-  player.update = update;
-  player.updateCamera = updateCamera;
-  return player;
+  // Simple walk cycle: legs and arms swing opposite.
+  syncLimbs(amount) {
+    const s = Math.sin(this.walkPhase) * 0.55 * amount;
+    this.legs[0].rotation.x = s;
+    this.legs[1].rotation.x = -s;
+    this.arms[0].rotation.x = -s * 0.8;
+    this.arms[1].rotation.x = s * 0.8;
+  }
+
+  // Step into a car: hide the figure, remember the car.
+  enterCar(car) {
+    this.inCar = car;
+    car.owned = true;
+    car.parked = false;
+    car.traffic = null;
+    this.group.visible = false;
+  }
+
+  // Step out beside the car.
+  exitCar() {
+    if (!this.inCar) return;
+    const car = this.inCar;
+    this.inCar = null;
+    this.x = car.x + Math.cos(car.heading) * 2.6;
+    this.z = car.z - Math.sin(car.heading) * 2.6;
+    this.group.visible = true;
+    this.group.position.set(this.x, groundHeightAt(this.x, this.z), this.z);
+  }
+
+  takeDamage(amount) {
+    this.health = Math.max(0, this.health - amount);
+    return this.health <= 0;
+  }
+
+  heal(amount) {
+    this.health = Math.min(CFG.playerMaxHealth, this.health + amount);
+  }
 }

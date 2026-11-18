@@ -1,120 +1,80 @@
-// Keyboard + mouse input. Click the canvas to lock the pointer for mouse look; the game
-// also works with plain mouse drag when the pointer is not locked.
-export function createInput(canvas) {
-  const keys = new Set();
-  let lookDX = 0;
-  let lookDY = 0;
-  let shootQueued = false;
-  let interactQueued = false;
-  let confirmQueued = false;
-  let pauseQueued = false;
-  let reloadQueued = false;
+// Solara Bay — keyboard and mouse input. One job: turn raw browser events
+// into a clean per-frame state the player and camera read.
 
-  function keyCode(event) {
-    return event.code;
+export class Input {
+  constructor(canvas) {
+    this.keys = new Set();
+    this.mouseDX = 0;
+    this.mouseDY = 0;
+    this.mouseDown = false;
+    this.pointerLocked = false;
+    this._pressed = new Set();
+    this.canvas = canvas;
+
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      this.keys.add(e.code);
+      this._pressed.add(e.code);
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('blur', () => this.keys.clear());
+    document.addEventListener('mousemove', (e) => {
+      if (!this.pointerLocked) return;
+      this.mouseDX += e.movementX || 0;
+      this.mouseDY += e.movementY || 0;
+    });
+    document.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.mouseDown = true;
+    });
+    document.addEventListener('mouseup', (e) => {
+      if (e.button === 0) this.mouseDown = false;
+    });
+    document.addEventListener('pointerlockchange', () => {
+      this.pointerLocked = document.pointerLockElement === canvas;
+    });
   }
 
-  window.addEventListener('keydown', (event) => {
-    if (event.repeat) return;
-    keys.add(keyCode(event));
-    if (event.code === 'KeyE') interactQueued = true;
-    if (event.code === 'Enter' || event.code === 'Space') confirmQueued = true;
-    if (event.code === 'KeyP' || event.code === 'Escape') pauseQueued = true;
-    if (event.code === 'KeyR') reloadQueued = true;
-    if (['Space', 'ArrowUp', 'ArrowDown'].includes(event.code)) event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    keys.delete(keyCode(event));
-  });
-  window.addEventListener('blur', () => keys.clear());
+  // Ask the browser to lock the pointer to the canvas (for mouse orbit).
+  lockPointer() {
+    try {
+      this.canvas.requestPointerLock();
+    } catch (e) {
+      /* pointer lock unavailable (headless) — mouse orbit just stays put */
+    }
+  }
 
-  canvas.addEventListener('mousedown', (event) => {
-    if (event.button === 0) {
-      shootQueued = true;
-      if (document.pointerLockElement !== canvas) {
-        try {
-          canvas.requestPointerLock();
-        } catch {
-          // Pointer lock can be denied (headless): drag still works.
-        }
-      }
+  unlockPointer() {
+    try {
+      if (document.pointerLockElement) document.exitPointerLock();
+    } catch (e) {
+      /* ignore */
     }
-  });
-  document.addEventListener('mousemove', (event) => {
-    if (document.pointerLockElement === canvas) {
-      lookDX += event.movementX;
-      lookDY += event.movementY;
-    }
-  });
-  // Drag-look fallback when the pointer is not locked.
-  let dragging = false;
-  let lastX = 0;
-  let lastY = 0;
-  canvas.addEventListener('mousedown', (event) => {
-    dragging = true;
-    lastX = event.clientX;
-    lastY = event.clientY;
-  });
-  window.addEventListener('mouseup', () => {
-    dragging = false;
-  });
-  window.addEventListener('mousemove', (event) => {
-    if (dragging && document.pointerLockElement !== canvas) {
-      lookDX += event.clientX - lastX;
-      lookDY += event.clientY - lastY;
-      lastX = event.clientX;
-      lastY = event.clientY;
-    }
-  });
+  }
 
-  return {
-    keys,
-    axis() {
-      let x = 0;
-      let y = 0;
-      if (keys.has('KeyW') || keys.has('ArrowUp')) y += 1;
-      if (keys.has('KeyS') || keys.has('ArrowDown')) y -= 1;
-      if (keys.has('KeyA') || keys.has('ArrowLeft')) x -= 1;
-      if (keys.has('KeyD') || keys.has('ArrowRight')) x += 1;
-      return { x, y };
-    },
-    run() {
-      return keys.has('ShiftLeft') || keys.has('ShiftRight');
-    },
-    handbrake() {
-      return keys.has('Space');
-    },
-    look() {
-      const dx = lookDX;
-      const dy = lookDY;
-      lookDX = 0;
-      lookDY = 0;
-      return { dx, dy };
-    },
-    takeShoot() {
-      const value = shootQueued;
-      shootQueued = false;
-      return value;
-    },
-    takeInteract() {
-      const value = interactQueued;
-      interactQueued = false;
-      return value;
-    },
-    takeConfirm() {
-      const value = confirmQueued;
-      confirmQueued = false;
-      return value;
-    },
-    takePause() {
-      const value = pauseQueued;
-      pauseQueued = false;
-      return value;
-    },
-    takeReload() {
-      const value = reloadQueued;
-      reloadQueued = false;
-      return value;
-    },
-  };
+  down(code) {
+    return this.keys.has(code);
+  }
+
+  // True only on the frame the key went down (consumed by endFrame).
+  pressed(code) {
+    return this._pressed.has(code);
+  }
+
+  // Movement axes: -1..1. W/S forward/back, A/D strafe.
+  moveAxes() {
+    let x = 0;
+    let y = 0;
+    if (this.down('KeyW') || this.down('ArrowUp')) y += 1;
+    if (this.down('KeyS') || this.down('ArrowDown')) y -= 1;
+    if (this.down('KeyA') || this.down('ArrowLeft')) x -= 1;
+    if (this.down('KeyD') || this.down('ArrowRight')) x += 1;
+    return { x, y };
+  }
+
+  // Consume this frame's edge-triggered state. Called once per frame.
+  endFrame() {
+    this._pressed.clear();
+    this.mouseDX = 0;
+    this.mouseDY = 0;
+  }
 }

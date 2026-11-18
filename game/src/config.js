@@ -1,102 +1,87 @@
-// Every tuning number, colour and piece of story text in one place. Solara Bay is a
-// fictional sun-soaked coastal city: no real place, no real game's names or map.
-export const STEP = 1 / 60;
-export const SAVE_KEY = 'solara-bay.save.v1';
+// Solara Bay — shared constants and tuning for the whole game.
+// One job: every number the other modules agree on lives here.
 
-export const CITY = {
-  roadPitch: 60, // distance between road centre lines
+export const CFG = {
+  // City layout: a 7x7 road grid. Block size and road width in world units.
+  gridN: 7,
+  blockSize: 46,
   roadWidth: 12,
-  roads: [-180, -120, -60, 0, 60, 120, 180], // road centre lines on x and z
-  half: 186, // city edge (last road centre 180 + half road)
-  beachFrom: 192, // sand strip starts here (south edge, +z)
-  oceanFrom: 252, // water starts here
-  oceanTo: 620,
+  // City spans from -span/2 to +span/2 on both axes.
+  span: 7 * 46 + 8 * 12, // 418
+  // Sea sits south (negative z beyond the city edge); beach strip in between.
+  beachDepth: 26,
+  // Player / car tuning.
+  walkSpeed: 9,
+  runSpeed: 14,
+  carAccel: 26,
+  carBrake: 42,
+  carMaxSpeed: 34,
+  carReverseMax: 10,
+  carTurn: 1.9,
+  // Combat.
+  pistolDamage: 34,
+  pistolRange: 90,
+  pistolCooldown: 0.22,
+  playerMaxHealth: 100,
+  // Wanted.
+  wantedDecaySeconds: 26,
+  maxWanted: 3,
+  // Money.
+  missionRewards: [500, 1200, 2000],
+  // Traffic and pedestrians.
+  trafficCount: 14,
+  pedCount: 22,
+  // Rendering.
+  fogNear: 120,
+  fogFar: 520,
+  daySky: 0x8ec9e8,
+  sunColor: 0xfff2d0,
+  // Save key.
+  saveKey: 'solara-bay-save-v1',
 };
 
-export const PALETTE = {
-  sky: 0x8ec9e8,
-  fog: 0x9fd0e8,
-  sun: 0xfff2d0,
-  asphalt: 0x3a3f46,
-  sidewalk: 0x9a938a,
-  sand: 0xe8d49a,
-  ocean: 0x2e7fa8,
-  grass: 0x6fae5e,
-  building: [0xd8c9b0, 0xc9b8a3, 0xb8c4c9, 0xd9a08a, 0xa8b8a0, 0xc9a8b8],
-  glass: 0x9fc8e0,
+// Named places, in world coordinates. The city centre is (0, 0).
+export const PLACES = {
+  // Docks pier sticks out into the sea at the south edge.
+  docks: { x: -120, z: -236 },
+  // Safehouse for mission 3, on the beach at the east end.
+  safehouse: { x: 150, z: -222 },
+  // Central park occupies the middle block.
+  park: { x: 0, z: 0 },
+  // Player spawns on the sidewalk near the south-west corner.
+  spawn: { x: -150, z: -150 },
 };
 
-export const PLAYER = {
-  walkSpeed: 6,
-  runSpeed: 10,
-  radius: 0.6,
-  health: 100,
-};
-
-export const CAR = {
-  accel: 22,
-  brake: 34,
-  maxSpeed: 34,
-  maxReverse: 10,
-  steer: 0.55, // rad/s at full lock, scaled by speed
-  grip: 6,
-  radius: 2.2,
-};
-
-export const TRAFFIC = { count: 14, speed: 9, minGap: 7 };
-export const PEDS = { count: 22, walkSpeed: 1.6, fleeSpeed: 4.5 };
-
-export const WANTED = {
-  max: 3,
-  decaySeconds: 9, // hidden this long loses one star
-  policePerStar: [0, 2, 3, 4],
-};
-
-export const GUN = { ammo: 12, range: 90, damage: 34 };
-
+// Mission script: id, title, objective text, reward.
 export const MISSIONS = [
   {
-    id: 'wheels',
+    id: 'wheels-up',
     title: 'Wheels Up',
-    giver: 'Rosa Delgado',
-    text: "Rosa needs wheels. Steal any parked car and bring it to Delgado Auto.",
-    objective: 'Steal a car (E near a parked car)',
-    reward: 300,
+    objective: 'Steal a car — press E near any car',
+    reward: CFG.missionRewards[0],
   },
   {
-    id: 'package',
+    id: 'the-package',
     title: 'The Package',
-    giver: 'Rosa Delgado',
-    text: 'A package waits at the docks. Pick it up on foot and deliver it to the Seaview Motel. The cops will not like it.',
-    objective: 'Drive to the docks',
-    reward: 800,
+    objective: 'Pick up the package on the docks pier, on foot',
+    reward: CFG.missionRewards[1],
   },
   {
-    id: 'heat',
+    id: 'heat-wave',
     title: 'Heat Wave',
-    giver: 'Rosa Delgado',
-    text: 'Two stars and the whole bay PD on your tail. Reach Solara Paint & Body and get a new coat — clean plates, clean slate.',
-    objective: 'Reach the paint shop',
-    reward: 1500,
+    objective: 'Lose the heat — reach the safehouse on the beach',
+    reward: CFG.missionRewards[2],
   },
 ];
 
-export const STORY = {
-  title: 'SOLARA BAY',
-  tagline: 'An open-world crime story in a city of sun, salt and stolen cars.',
-  intro:
-    "Dante Cole is out of luck and into debt. Rosa Delgado, who runs the garage on Marlin Street, offers him a way out: three jobs, one night, no questions. Steal the wheels, move the package, lose the heat — and walk away clean.",
-  controls: [
-    ['W A S D', 'Move / drive'],
-    ['Mouse', 'Look around (click to lock)'],
-    ['Shift', 'Run'],
-    ['E', 'Enter / exit a car'],
-    ['Click', 'Shoot'],
-    ['R', 'Reload'],
-    ['Space', 'Handbrake'],
-    ['P / Esc', 'Pause'],
-    ['M', 'Mute'],
-  ],
-};
+// Car paint palette (hex). Traffic and the player share it.
+export const CAR_COLORS = [
+  0xc0392b, 0x2471a3, 0xf1c40f, 0x27ae60, 0x8e44ad,
+  0xe67e22, 0xecf0f1, 0x2c3e50, 0x16a085, 0xd35400,
+];
 
-export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+// Pedestrian shirt palette.
+export const PED_COLORS = [
+  0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6,
+  0x1abc9c, 0xe67e22, 0xfd79a8, 0x00cec9, 0x6c5ce7,
+];

@@ -1,100 +1,127 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Solara Bay — an open-world crime story</title>
+<title>Solara Bay — an open-world crime game</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0c1118; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; }
-  .panel { background: rgba(10, 14, 20, 0.62); border: 1px solid rgba(255,255,255,0.16); border-radius: 8px; }
-  #topleft { position: absolute; top: 14px; left: 14px; padding: 10px 14px; display: flex; flex-direction: column; gap: 6px; }
-  #wanted { font-size: 26px; letter-spacing: 4px; line-height: 1; text-shadow: 0 2px 6px #000; }
-  #health-row { display: flex; align-items: center; gap: 8px; }
-  #health-bar { width: 150px; height: 10px; background: rgba(255,255,255,0.18); border-radius: 5px; overflow: hidden; }
-  #health-fill { height: 100%; width: 100%; background: #58c96b; }
-  #health-text { font-size: 13px; font-weight: 700; }
-  #money { font-size: 22px; font-weight: 800; color: #7ee787; text-shadow: 0 2px 6px #000; }
-  #mission { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 10px 18px; text-align: center; max-width: 560px; }
-  #mission-title { font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #ffd23c; }
-  #objective { font-size: 15px; margin-top: 3px; }
-  #toast { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); padding: 8px 16px; font-size: 15px; opacity: 0; transition: opacity 0.4s; max-width: 640px; text-align: center; }
-  #banner { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity 0.5s; }
-  #banner-title { font-size: 44px; font-weight: 900; letter-spacing: 3px; color: #ffd23c; text-shadow: 0 3px 14px #000; }
-  #banner-sub { font-size: 17px; margin-top: 6px; text-shadow: 0 2px 8px #000; }
-  #minimap { position: absolute; left: 14px; bottom: 14px; border: 2px solid rgba(255,255,255,0.25); border-radius: 50%; background: #10151c; }
-  #bottomright { position: absolute; right: 16px; bottom: 14px; text-align: right; }
-  #speed { font-size: 30px; font-weight: 800; text-shadow: 0 2px 8px #000; }
-  #hint { font-size: 12px; color: rgba(255,255,255,0.75); margin-top: 4px; text-shadow: 0 1px 4px #000; }
-  #crosshair { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 4px #000; display: none; }
-  .screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(160deg, rgba(8,20,36,0.88), rgba(40,16,8,0.82)); color: #fff; pointer-events: auto; z-index: 10; }
-  .screen-inner { max-width: 620px; padding: 34px 40px; text-align: center; background: rgba(8,12,18,0.72); border: 1px solid rgba(255,255,255,0.18); border-radius: 14px; }
-  .screen h1 { font-size: 52px; margin: 0; letter-spacing: 6px; color: #ffd23c; text-shadow: 0 4px 18px #000; }
-  .screen h2 { font-size: 15px; font-weight: 600; color: #9fd0e8; margin: 8px 0 0; letter-spacing: 1px; }
-  .screen p { font-size: 15px; line-height: 1.55; color: #e8eef4; }
-  .controls { text-align: left; display: inline-block; font-size: 14px; line-height: 1.9; color: #d5dde6; }
-  .controls b { color: #ffd23c; display: inline-block; min-width: 110px; }
-  .big-btn { pointer-events: auto; cursor: pointer; margin-top: 18px; padding: 13px 42px; font-size: 19px; font-weight: 800; letter-spacing: 2px; color: #14100a; background: #ffd23c; border: none; border-radius: 9px; }
-  .big-btn:hover { background: #ffe06a; }
-  .ghost-btn { pointer-events: auto; cursor: pointer; margin-top: 12px; margin-left: 10px; padding: 11px 26px; font-size: 15px; font-weight: 700; color: #fff; background: transparent; border: 1px solid rgba(255,255,255,0.5); border-radius: 9px; }
-  #end-title { font-size: 46px; }
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0b1c2c;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #fff; }
+  #game-canvas { display: block; width: 100vw; height: 100vh; }
+  .hidden { display: none !important; }
+
+  /* HUD */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  #hud-top-left { position: absolute; top: 16px; left: 16px; }
+  #hud-money { font-size: 30px; font-weight: 800; color: #7dff9a;
+    text-shadow: 0 2px 4px rgba(0,0,0,.8); letter-spacing: 1px; }
+  #hud-health { width: 190px; height: 12px; margin-top: 6px; background: rgba(0,0,0,.55);
+    border: 1px solid rgba(255,255,255,.35); border-radius: 6px; overflow: hidden; }
+  #hud-health-fill { height: 100%; width: 100%; background: #2ecc71; }
+  #hud-stars { position: absolute; top: 14px; right: 210px; font-size: 30px; letter-spacing: 4px;
+    color: #ffd75e; text-shadow: 0 2px 4px rgba(0,0,0,.8); }
+  #hud-stars.hot { animation: pulse .8s infinite alternate; }
+  @keyframes pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+  #hud-minimap { position: absolute; top: 16px; right: 16px; width: 180px; height: 180px;
+    border: 2px solid rgba(255,255,255,.6); border-radius: 8px; background: rgba(0,0,0,.4); }
+  #hud-objective { position: absolute; left: 16px; bottom: 56px; max-width: 420px;
+    background: rgba(0,0,0,.6); border-left: 4px solid #f1c40f; padding: 10px 14px; border-radius: 4px; }
+  #hud-objective b { display: block; font-size: 17px; color: #f1c40f; letter-spacing: 1px; }
+  #hud-objective span { font-size: 14px; color: #eee; }
+  #hud-speed { position: absolute; right: 20px; bottom: 56px; font-size: 30px; font-weight: 800;
+    text-shadow: 0 2px 4px rgba(0,0,0,.8); }
+  #hud-toast { position: absolute; left: 50%; top: 22%; transform: translateX(-50%);
+    background: rgba(0,0,0,.72); padding: 10px 22px; border-radius: 20px; font-size: 18px;
+    font-weight: 600; white-space: nowrap; }
+  #hud-crosshair { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px;
+    transform: translate(-50%, -50%); }
+  #hud-crosshair::before, #hud-crosshair::after { content: ''; position: absolute; background: #fff;
+    box-shadow: 0 0 4px #000; }
+  #hud-crosshair::before { left: 10px; top: 0; width: 2px; height: 22px; }
+  #hud-crosshair::after { left: 0; top: 10px; width: 22px; height: 2px; }
+  #hud-help { position: absolute; left: 16px; bottom: 16px; font-size: 12px; color: rgba(255,255,255,.75);
+    text-shadow: 0 1px 2px rgba(0,0,0,.8); }
+
+  /* Screens */
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: linear-gradient(180deg, rgba(6,24,42,.88), rgba(10,40,66,.92)); }
+  .screen h1 { font-size: 64px; margin: 0 0 8px; letter-spacing: 6px; color: #ffd75e;
+    text-shadow: 0 4px 0 #b8860b, 0 8px 24px rgba(0,0,0,.6); }
+  .screen h2 { font-size: 28px; margin: 0 0 12px; color: #fff; }
+  .screen p { max-width: 560px; font-size: 16px; line-height: 1.55; color: #dfe9f2; margin: 6px 0; }
+  .screen .sub { color: #9fd8ff; font-size: 15px; }
+  .screen button { pointer-events: auto; margin-top: 18px; padding: 13px 34px; font-size: 18px;
+    font-weight: 700; letter-spacing: 1px; color: #10202e; background: #ffd75e; border: none;
+    border-radius: 8px; cursor: pointer; box-shadow: 0 4px 0 #b8860b; }
+  .screen button:hover { background: #ffe27a; }
+  .screen button.secondary { background: #dfe9f2; box-shadow: 0 4px 0 #7a8a99; }
+  .controls { margin-top: 22px; font-size: 14px; color: #bcd3e2; line-height: 1.9; }
+  .controls b { color: #fff; background: rgba(255,255,255,.14); border-radius: 4px; padding: 1px 7px; }
+  #title-save-note { color: #7dff9a; font-weight: 600; }
 </style>
 <script type="importmap">
-{ "imports": { "three": "./vendor/three.module.min.js" } }
+{
+  "imports": {
+    "three": "./vendor/three.module.min.js"
+  }
+}
 </script>
 </head>
 <body>
-<canvas id="game" aria-label="Solara Bay: an open-world crime game. Explore the city on foot and by car, take on missions and lose the police."></canvas>
-<p id="status" role="status" aria-live="polite"></p>
-<div id="hud">
-  <div id="topleft" class="panel">
-    <div id="wanted">☆☆☆</div>
-    <div id="health-row"><div id="health-bar"><div id="health-fill"></div></div><span id="health-text">100</span></div>
-    <div id="money">$150</div>
+<canvas id="game-canvas"></canvas>
+
+<div id="hud" class="hidden">
+  <div id="hud-top-left">
+    <div id="hud-money">$0</div>
+    <div id="hud-health"><div id="hud-health-fill"></div></div>
   </div>
-  <div id="mission" class="panel"><div id="mission-title">Wheels Up</div><div id="objective">Steal a car (E near a parked car)</div></div>
-  <div id="toast" class="panel"></div>
-  <div id="banner"><div id="banner-title"></div><div id="banner-sub"></div></div>
-  <canvas id="minimap" width="190" height="190"></canvas>
-  <div id="bottomright"><div id="speed"></div><div id="hint"></div></div>
-  <div id="crosshair"></div>
+  <div id="hud-stars">☆☆☆</div>
+  <canvas id="hud-minimap" width="180" height="180"></canvas>
+  <div id="hud-objective"><b>Solara Bay</b><span>Loading…</span></div>
+  <div id="hud-speed" class="hidden">0 km/h</div>
+  <div id="hud-toast" class="hidden"></div>
+  <div id="hud-crosshair" class="hidden"></div>
+  <div id="hud-help">WASD move &nbsp;·&nbsp; Mouse look &nbsp;·&nbsp; E enter / exit car &nbsp;·&nbsp; Click shoot &nbsp;·&nbsp; Shift run &nbsp;·&nbsp; P pause &nbsp;·&nbsp; M mute</div>
 </div>
 
-<div id="title-screen" class="screen">
-  <div class="screen-inner">
-    <h1>SOLARA BAY</h1>
-    <h2>AN OPEN-WORLD CRIME STORY</h2>
-    <p>Dante Cole is out of luck and into debt. Rosa Delgado, who runs the garage on Marlin Street, offers him a way out: three jobs, one night, no questions. Steal the wheels, move the package, lose the heat — and walk away clean.</p>
-    <div class="controls">
-      <div><b>W A S D</b> Move / drive</div>
-      <div><b>Mouse</b> Look (click to lock)</div>
-      <div><b>Shift</b> Run &nbsp;·&nbsp; <b>E</b> Enter / exit car</div>
-      <div><b>Click</b> Shoot &nbsp;·&nbsp; <b>R</b> Reload</div>
-      <div><b>Space</b> Handbrake &nbsp;·&nbsp; <b>P</b> Pause &nbsp;·&nbsp; <b>M</b> Mute</div>
-    </div>
-    <br>
-    <button id="start-btn" class="big-btn">START THE NIGHT</button>
-    <button id="continue-btn" class="ghost-btn">Continue</button>
+<div id="screen-title" class="screen">
+  <h1>SOLARA BAY</h1>
+  <p class="sub">A sun-soaked coastal city. Three jobs. One fixer who never forgets a debt.</p>
+  <p>You are <b>Dante Cole</b>, fresh out and broke. Rosa Delgado has work for you —
+     wheels, a package on the docks, and a heat wave you will have to outrun.</p>
+  <p id="title-save-note"></p>
+  <button id="btn-start">Start new game</button>
+  <button id="btn-continue" class="secondary hidden">Continue</button>
+  <div class="controls">
+    <b>W A S D</b> move &nbsp; <b>Mouse</b> look &nbsp; <b>E</b> steal / exit car &nbsp; <b>Click</b> shoot<br>
+    <b>Shift</b> run &nbsp; <b>P</b> pause &nbsp; <b>M</b> mute &nbsp; Progress saves automatically
   </div>
 </div>
 
-<div id="pause-screen" class="screen" style="display:none">
-  <div class="screen-inner">
-    <h1 style="font-size:38px">PAUSED</h1>
-    <p>Solara Bay waits. The cops do not.</p>
-    <button id="resume-btn" class="big-btn">RESUME</button>
-    <button id="restart-btn" class="ghost-btn">Restart night</button>
-  </div>
+<div id="screen-pause" class="screen hidden">
+  <h2>Paused</h2>
+  <p>Solara Bay waits for no one — except right now.</p>
+  <button id="btn-resume">Resume</button>
 </div>
 
-<div id="end-screen" class="screen" style="display:none">
-  <div class="screen-inner">
-    <h1 id="end-title">WASTED</h1>
-    <p id="end-text"></p>
-    <button id="again-btn" class="big-btn">TRY AGAIN</button>
-  </div>
+<div id="screen-wasted" class="screen hidden">
+  <h2>WASTED</h2>
+  <p>Dante went down in the streets of Solara Bay. Rosa is already lining up the next guy.</p>
+  <button id="btn-restart-wasted">Try again</button>
+</div>
+
+<div id="screen-busted" class="screen hidden">
+  <h2>BUSTED</h2>
+  <p>The Solara Bay police finally caught up with Dante. The cell has a great view of the docks.</p>
+  <button id="btn-restart-busted">Try again</button>
+</div>
+
+<div id="screen-complete" class="screen hidden">
+  <h2>SOLARA BAY IS YOURS</h2>
+  <p>All three jobs done. Rosa pays in full, the heat forgets your name, and the city is open.</p>
+  <p id="complete-stats"></p>
+  <button id="btn-again">Free roam</button>
 </div>
 
 <script type="module" src="./src/main.js"></script>

@@ -1,116 +1,110 @@
-// The screenshot scenes behind ?shot=cover|street|drive|mission. Each one stages the real
-// game from the seeded world, plays it forward with a scripted driver for a few seconds, and
-// leaves a frame that shows several systems at once. The same seed always gives the same frame.
-import * as THREE from 'three';
+// Solara Bay — scripted screenshot scenes. One job: given ?shot=<name>, put
+// the game into a fixed, readable tableau for the screenshots, so every shot
+// shows the systems working without any input.
 
-const STEP = 1 / 60;
+import { PLACES } from './config.js';
+//
+// Every scene puts its car on a real road (road centres are -203, -145,
+// -87, -29, 29, 87, 145, 203) and returns a camera pose as an offset from
+// the player's current position plus a look offset — the camera follows the
+// player, so a moving car stays framed.
 
-/** Input that drives straight ahead, used while a shot plays itself forward. */
-function driveInput() {
-  return {
-    keys: new Set(),
-    axis: () => ({ x: 0, y: 1 }),
-    run: () => false,
-    handbrake: () => false,
-    look: () => ({ dx: 0, dy: 0 }),
-    takeShoot: () => false,
-    takeInteract: () => false,
-    takeConfirm: () => false,
-    takePause: () => false,
-    takeReload: () => false,
-  };
-}
-
-function idleInput() {
-  const input = driveInput();
-  input.axis = () => ({ x: 0, y: 0 });
-  return input;
-}
-
-function putPlayerInCar(game, x, z, heading) {
-  const { player, vehicles } = game;
-  // Prefer a parked car already nearby; otherwise put a fresh one on the road, so the
-  // player's car is always a real parked car and never a traffic car mid-route.
-  const car = vehicles.nearestCar({ x, z }, 60, ['parked']) || vehicles.spawnParkedAt(x, z, heading);
-  car.pos.set(x, 0, z);
-  car.heading = heading;
-  car.speed = 0;
-  car.group.position.copy(car.pos);
-  car.group.rotation.y = heading;
-  vehicles.setPlayerCar(car);
-  player.inCar = true;
-  player.car = car;
-  player.pos.copy(car.pos);
-  player.heading = heading;
-  player.yaw = heading + Math.PI;
-  return car;
-}
-
-function putPlayerOnFoot(game, x, z, yaw) {
-  const { player } = game;
-  player.inCar = false;
-  player.car = null;
-  player.pos.set(x, 0, z);
-  player.heading = yaw + Math.PI;
-  player.yaw = yaw;
-  player.group.position.copy(player.pos);
-}
-
-/** Play the game forward `steps` fixed steps with the given input. */
-function playForward(game, steps, input) {
-  game.setShotInput(input);
-  for (let i = 0; i < steps; i += 1) game.stepGame(STEP);
-  game.setShotInput(null);
-}
-
-export function stageShot(name, game) {
-  const { player, vehicles, wanted, missions, hud } = game;
-  hud.showScreen('play');
-  if (name === 'cover') {
-    // A chase: Dante delivering the package with two stars, two patrol cars closing
-    // head-on down the same avenue (the camera looks forward, so the pursuit reads).
-    missions.debugSet(1, 2);
-    wanted.add(2, 'the chase');
-    const car = putPlayerInCar(game, 0, 40, Math.PI);
+// Each scene is a function that arranges the game state, then a camera pose
+// (offset from the focus point, and where the camera looks).
+const SCENES = {
+  // Cover: a police chase — wanted 3, police on the tail, mission objective
+  // and minimap live on the HUD. Car on the x=-29 road, heading +z.
+  chase(G) {
+    const car = G.vehicles.cars[2];
+    G.player.enterCar(car);
+    car.x = -29;
+    car.z = 40;
+    car.heading = 0;
     car.speed = 22;
-    const police1 = vehicles.spawnPoliceAt(player.pos);
-    police1.pos.set(3, 0, -50);
-    police1.heading = 0;
-    const police2 = vehicles.spawnPoliceAt(player.pos);
-    police2.pos.set(-3, 0, -70);
-    police2.heading = 0;
-    playForward(game, 72, driveInput());
-  } else if (name === 'drive') {
-    // Cruising the ocean avenue toward the beach, traffic ahead.
-    missions.debugSet(0, 1);
-    const car = putPlayerInCar(game, 60, -120, 0);
-    car.speed = 18;
-    playForward(game, 150, driveInput());
-  } else if (name === 'mission') {
-    // On foot at the docks, package beacon ahead. The camera stands on the sand north of
-    // the pier looking south, so the player, the beacon column, the pier and the ocean
-    // are all in the frame and the beam never sits between the camera and the player.
-    missions.debugSet(1, 1);
-    wanted.add(1, 'the package');
-    putPlayerOnFoot(game, -30, 246, Math.PI);
-    player.pitch = 0.15;
-    playForward(game, 120, idleInput());
-  } else {
-    // street: on foot on the sidewalk by the park, traffic and pedestrians passing.
-    missions.debugSet(0, 0);
-    putPlayerOnFoot(game, 7.5, -40, 0);
-    playForward(game, 180, idleInput());
+    car.sync();
+    G.wanted.setLevel(3);
+    G.vehicles.ensurePolice(3, car.x, car.z);
+    // Police right behind, mid-chase, on the same road. The camera sits
+    // ahead of the player's car looking back, so the chase reads: the
+    // player's car in front, the black-and-whites closing in behind it.
+    const spots = [[-32, 28], [-26, 20], [-29, 12]];
+    G.vehicles.police.forEach((p, i) => {
+      p.x = spots[i][0];
+      p.z = spots[i][1];
+      p.heading = 0;
+      p.speed = 20;
+      p.sync();
+    });
+    G.missions.setIndex(1);
+    G.money = 1700;
+    return { offset: { x: 3, y: 7, z: 24 }, look: { x: 0, y: 1.5, z: -8 } };
+  },
+
+  // On foot in the city: Dante on the x=-29 road, peds and traffic around.
+  street(G) {
+    G.player.x = -30;
+    G.player.z = -58;
+    G.player.heading = Math.PI * 0.75;
+    G.player.group.position.set(G.player.x, 0, G.player.z);
+    G.player.group.rotation.y = G.player.heading;
+    G.missions.setIndex(0);
+    G.money = 0;
+    return { offset: { x: -2, y: 6, z: -13 }, look: { x: 8, y: 1.5, z: 10 } };
+  },
+
+  // Driving with traffic: Dante cruising the x=87 road north-to-south,
+  // cars ahead and oncoming. Heading PI faces -z.
+  drive(G) {
+    const car = G.vehicles.cars[5];
+    G.player.enterCar(car);
+    car.x = 87;
+    car.z = -40;
+    car.heading = Math.PI;
+    car.speed = 16;
+    car.sync();
+    // A traffic car ahead on the same road, and one oncoming behind.
+    const t1 = G.vehicles.cars[0];
+    t1.x = 87;
+    t1.z = -72;
+    t1.heading = Math.PI;
+    t1.speed = 10;
+    t1.traffic = { horizontal: false, dir: -1, road: 87, turnedAt: new Set() };
+    const t2 = G.vehicles.cars[1];
+    t2.x = 87;
+    t2.z = -8;
+    t2.heading = 0;
+    t2.speed = 9;
+    t2.traffic = { horizontal: false, dir: 1, road: 87, turnedAt: new Set() };
+    G.missions.setIndex(1);
+    G.money = 500;
+    return { offset: { x: -2, y: 7, z: 15 }, look: { x: 0, y: 1.5, z: -26 } };
+  },
+
+  // Mission moment: Dante on the docks pier at the package, ocean behind.
+  docks(G) {
+    G.player.x = PLACES.docks.x + 2;
+    G.player.z = PLACES.docks.z - 14;
+    G.player.heading = Math.PI;
+    G.player.group.position.set(G.player.x, 0.5, G.player.z);
+    G.player.group.rotation.y = G.player.heading;
+    G.missions.setIndex(1);
+    G.money = 500;
+    return { offset: { x: 10, y: 6, z: 14 }, look: { x: 0, y: 2, z: -18 } };
+  },
+};
+
+// Read ?shot= from the URL; null when absent.
+export function shotFromUrl() {
+  try {
+    return new URLSearchParams(window.location.search).get('shot');
+  } catch (e) {
+    return null;
   }
-  // Screenshots want the HUD, not the intro toast or the crosshair on the player's back.
-  hud.hideToast();
-  hud.setCrosshairVisible(false);
-  // Paint twice so shadows, particles and the HUD are settled, then signal the shooter.
-  let painted = 0;
-  function paint() {
-    game.renderGame();
-    painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
-    else window.__shotReady = true;
-  }
-  requestAnimationFrame(paint);
+}
+
+// Apply a scene. Returns its camera pose, or null when there is no scene.
+export function applyShot(name, G) {
+  const scene = SCENES[name];
+  if (!scene) return null;
+  return scene(G);
 }

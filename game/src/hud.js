@@ -1,194 +1,152 @@
-// The HUD: wanted stars, health, money, mission objective, a live minimap, toasts and the
-// title / pause / end screens. All DOM over the WebGL canvas.
-import { CITY, FONT } from './config.js';
+// Solara Bay — the HUD and the screens. One job: draw every pixel of the
+// interface (money, health, stars, speed, objective, minimap) and run the
+// title / pause / wasted / busted / complete screens.
 
-export function createHud() {
-  const $ = (id) => document.getElementById(id);
-  const wantedEl = $('wanted');
-  const healthFill = $('health-fill');
-  const healthText = $('health-text');
-  const moneyEl = $('money');
-  const missionTitleEl = $('mission-title');
-  const objectiveEl = $('objective');
-  const toastEl = $('toast');
-  const bannerEl = $('banner');
-  const bannerTitle = $('banner-title');
-  const bannerSub = $('banner-sub');
-  const speedEl = $('speed');
-  const hintEl = $('hint');
-  const minimap = $('minimap');
-  const mapCtx = minimap.getContext('2d');
-  const titleScreen = $('title-screen');
-  const pauseScreen = $('pause-screen');
-  const endScreen = $('end-screen');
-  const endTitle = $('end-title');
-  const endText = $('end-text');
-  const crosshair = $('crosshair');
-
-  let toastTimer = null;
-  let bannerTimer = null;
-
-  function setWanted(level) {
-    let stars = '';
-    for (let i = 0; i < 3; i += 1) stars += i < level ? '★' : '☆';
-    wantedEl.textContent = stars;
-    wantedEl.style.color = level > 0 ? '#ffcf3c' : '#ffffff88';
+export class Hud {
+  constructor() {
+    this.root = document.getElementById('hud');
+    this.moneyEl = document.getElementById('hud-money');
+    this.healthFill = document.getElementById('hud-health-fill');
+    this.starsEl = document.getElementById('hud-stars');
+    this.speedEl = document.getElementById('hud-speed');
+    this.objectiveEl = document.getElementById('hud-objective');
+    this.toastEl = document.getElementById('hud-toast');
+    this.crosshair = document.getElementById('hud-crosshair');
+    this.map = document.getElementById('hud-minimap');
+    this.mapCtx = this.map.getContext('2d');
+    this.toastTimer = 0;
+    this.screens = {
+      title: document.getElementById('screen-title'),
+      pause: document.getElementById('screen-pause'),
+      wasted: document.getElementById('screen-wasted'),
+      busted: document.getElementById('screen-busted'),
+      complete: document.getElementById('screen-complete'),
+    };
+    this.completeStats = document.getElementById('complete-stats');
   }
 
-  function setHealth(value) {
-    const v = Math.max(0, Math.min(100, Math.round(value)));
-    healthFill.style.width = `${v}%`;
-    healthFill.style.background = v > 50 ? '#58c96b' : v > 25 ? '#e8a13c' : '#e5534b';
-    healthText.textContent = `${v}`;
+  showScreen(name) {
+    for (const [key, el] of Object.entries(this.screens)) {
+      el.classList.toggle('hidden', key !== name);
+    }
+    this.root.classList.toggle('hidden', name === 'title');
+    if (name) this.crosshair.classList.add('hidden');
   }
 
-  function setMoney(value) {
-    moneyEl.textContent = `$${value.toLocaleString('en-US')}`;
+  hideScreens() {
+    for (const el of Object.values(this.screens)) el.classList.add('hidden');
+    this.root.classList.remove('hidden');
   }
 
-  function setMissionTitle(title) {
-    missionTitleEl.textContent = title;
+  setMoney(n) {
+    this.moneyEl.textContent = '$' + Math.floor(n).toLocaleString('en-US');
   }
 
-  function setObjective(text) {
-    objectiveEl.textContent = text;
+  setHealth(h) {
+    this.healthFill.style.width = Math.max(0, Math.min(100, h)) + '%';
+    this.healthFill.style.background = h > 50 ? '#2ecc71' : h > 25 ? '#f39c12' : '#e74c3c';
   }
 
-  function toast(text, ms) {
-    toastEl.textContent = text;
-    toastEl.style.opacity = '1';
-    if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      toastEl.style.opacity = '0';
-    }, ms || 4200);
+  setStars(n) {
+    let s = '';
+    for (let i = 0; i < 3; i++) s += i < n ? '★' : '☆';
+    this.starsEl.textContent = s;
+    this.starsEl.classList.toggle('hot', n > 0);
   }
 
-  function hideToast() {
-    if (toastTimer) clearTimeout(toastTimer);
-    toastEl.style.opacity = '0';
-  }
-
-  function setCrosshairVisible(visible) {
-    crosshair.style.display = visible ? 'block' : 'none';
-  }
-
-  function banner(title, sub) {
-    bannerTitle.textContent = title;
-    bannerSub.textContent = sub || '';
-    bannerEl.style.opacity = '1';
-    if (bannerTimer) clearTimeout(bannerTimer);
-    bannerTimer = setTimeout(() => {
-      bannerEl.style.opacity = '0';
-    }, 3200);
-  }
-
-  function setSpeed(kmh, inCar, ammo) {
-    speedEl.textContent = inCar ? `${Math.round(kmh)} km/h` : '';
-    hintEl.textContent = inCar
-      ? 'W A S D drive · Space handbrake · E exit car'
-      : `W A S D move · Shift run · E enter car · Click shoot (${ammo ?? 12}/12) · R reload`;
-  }
-
-  function showScreen(name) {
-    titleScreen.style.display = name === 'title' ? 'flex' : 'none';
-    pauseScreen.style.display = name === 'pause' ? 'flex' : 'none';
-    endScreen.style.display = name === 'end' ? 'flex' : 'none';
-    crosshair.style.display = name === 'play' ? 'block' : 'none';
-  }
-
-  function showEnd(kind, money) {
-    if (kind === 'wasted') {
-      endTitle.textContent = 'WASTED';
-      endText.textContent = 'Dante went down in Solara Bay. The city keeps your money — start again.';
-    } else if (kind === 'busted') {
-      endTitle.textContent = 'BUSTED';
-      endText.textContent = 'The Solara Bay PD caught up with Dante. Bail is not cheap.';
+  setSpeed(kmh, driving) {
+    if (driving) {
+      this.speedEl.textContent = Math.round(kmh) + ' km/h';
+      this.speedEl.classList.remove('hidden');
     } else {
-      endTitle.textContent = 'CLEAN — FOR NOW';
-      endText.textContent = `Three jobs done, the heat is off and Dante walks away with $${money.toLocaleString('en-US')}. Solara Bay is yours to roam.`;
+      this.speedEl.classList.add('hidden');
     }
-    showScreen('end');
   }
 
-  // Minimap: whole city, north up, player arrow in the middle of the action.
-  function drawMinimap(world, player, cars, peds, marker, time) {
-    const size = minimap.width;
-    const scale = size / (CITY.half * 2 + 60);
-    const toMap = (x, z) => [size / 2 + x * scale, size / 2 + z * scale];
-    mapCtx.fillStyle = '#10151c';
-    mapCtx.fillRect(0, 0, size, size);
-    // Ocean (south edge).
-    mapCtx.fillStyle = '#2e7fa8';
-    const [, beachY] = toMap(0, CITY.beachFrom);
-    mapCtx.fillRect(0, beachY, size, size - beachY);
-    // Roads.
-    mapCtx.strokeStyle = '#565e68';
-    mapCtx.lineWidth = Math.max(2, CITY.roadWidth * scale);
-    for (const c of CITY.roads) {
-      const [x1] = toMap(c, 0);
-      mapCtx.beginPath();
-      mapCtx.moveTo(x1, 0);
-      mapCtx.lineTo(x1, size);
-      mapCtx.stroke();
-      const [, z1] = toMap(0, c);
-      mapCtx.beginPath();
-      mapCtx.moveTo(0, z1);
-      mapCtx.lineTo(size, z1);
-      mapCtx.stroke();
-    }
-    // Mission marker.
-    if (marker) {
-      const [mx, mz] = toMap(marker.x, marker.z);
-      const pulse = 5 + Math.sin(time * 4) * 2;
-      mapCtx.fillStyle = '#ffd23c';
-      mapCtx.beginPath();
-      mapCtx.arc(mx, mz, pulse, 0, Math.PI * 2);
-      mapCtx.fill();
-    }
-    // Cars and peds.
-    for (const car of cars) {
-      if (car.kind === 'parked') continue;
-      const [cx, cz] = toMap(car.pos.x, car.pos.z);
-      mapCtx.fillStyle = car.kind === 'police' ? '#ff4d4d' : '#ffd23c';
-      mapCtx.fillRect(cx - 2, cz - 2, 4, 4);
-    }
-    mapCtx.fillStyle = '#9aa5b1';
-    for (const ped of peds) {
-      if (ped.state === 'down') continue;
-      const [px, pz] = toMap(ped.pos.x, ped.pos.z);
-      mapCtx.fillRect(px - 1, pz - 1, 2, 2);
-    }
-    // Player arrow: the map is north-up (x right, z down); a heading of 0 faces +z (south,
-    // down on the map), so the up-pointing arrow rotates by PI - heading.
-    const [px, pz] = toMap(player.pos.x, player.pos.z);
-    mapCtx.save();
-    mapCtx.translate(px, pz);
-    mapCtx.rotate(Math.PI - player.heading);
-    mapCtx.fillStyle = '#ffffff';
-    mapCtx.beginPath();
-    mapCtx.moveTo(0, -7);
-    mapCtx.lineTo(5, 6);
-    mapCtx.lineTo(0, 3);
-    mapCtx.lineTo(-5, 6);
-    mapCtx.closePath();
-    mapCtx.fill();
-    mapCtx.restore();
+  setObjective(title, text) {
+    this.objectiveEl.innerHTML = '<b>' + title + '</b><span>' + text + '</span>';
   }
 
-  return {
-    setWanted,
-    setHealth,
-    setMoney,
-    setMissionTitle,
-    setObjective,
-    toast,
-    hideToast,
-    setCrosshairVisible,
-    banner,
-    setSpeed,
-    showScreen,
-    showEnd,
-    drawMinimap,
-    font: FONT,
-  };
+  setCrosshair(on) {
+    this.crosshair.classList.toggle('hidden', !on);
+  }
+
+  toast(text, seconds = 3) {
+    this.toastEl.textContent = text;
+    this.toastEl.classList.remove('hidden');
+    this.toastTimer = seconds;
+  }
+
+  updateToast(dt) {
+    if (this.toastTimer > 0) {
+      this.toastTimer -= dt;
+      if (this.toastTimer <= 0) this.toastEl.classList.add('hidden');
+    }
+  }
+
+  // Top-down minimap: roads, park, beach, sea, mission marker, cars, police,
+  // peds and the player arrow. `view` is { half } in world units.
+  drawMinimap(view, player, cars, police, peds, missionMarker) {
+    const ctx = this.mapCtx;
+    const W = this.map.width;
+    const H = this.map.height;
+    const scale = W / (view.half * 2 + 60);
+    const toX = (x) => W / 2 + x * scale;
+    const toZ = (z) => H / 2 + z * scale;
+    ctx.clearRect(0, 0, W, H);
+    // Sea and beach (south edge).
+    ctx.fillStyle = '#1d6f9e';
+    ctx.fillRect(0, toZ(-view.half - 26), W, H - toZ(-view.half - 26));
+    ctx.fillStyle = '#e0c896';
+    ctx.fillRect(0, toZ(-view.half - 26), W, toZ(-view.half) - toZ(-view.half - 26));
+    // City ground.
+    ctx.fillStyle = '#3a3d42';
+    ctx.fillRect(toX(-view.half), toZ(-view.half), view.half * 2 * scale, view.half * 2 * scale);
+    // Park.
+    ctx.fillStyle = '#4e8f3a';
+    ctx.fillRect(toX(-23), toZ(-23), 46 * scale, 46 * scale);
+    // Roads: lighter lines on the grid.
+    ctx.strokeStyle = '#565b62';
+    ctx.lineWidth = 2;
+    for (const c of view.roads) {
+      ctx.beginPath(); ctx.moveTo(toX(-view.half), toZ(c)); ctx.lineTo(toX(view.half), toZ(c)); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(toX(c), toZ(-view.half)); ctx.lineTo(toX(c), toZ(view.half)); ctx.stroke();
+    }
+    // Mission marker: pulsing yellow diamond.
+    if (missionMarker) {
+      const pulse = 5 + Math.sin(performance.now() / 200) * 2;
+      ctx.fillStyle = '#f1c40f';
+      ctx.beginPath();
+      ctx.moveTo(toX(missionMarker.x), toZ(missionMarker.z) - pulse - 3);
+      ctx.lineTo(toX(missionMarker.x) + pulse + 3, toZ(missionMarker.z));
+      ctx.lineTo(toX(missionMarker.x), toZ(missionMarker.z) + pulse + 3);
+      ctx.lineTo(toX(missionMarker.x) - pulse - 3, toZ(missionMarker.z));
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Peds as grey dots.
+    ctx.fillStyle = '#bbbbbb';
+    for (const p of peds) ctx.fillRect(toX(p.x) - 1, toZ(p.z) - 1, 2, 2);
+    // Traffic as white dots.
+    ctx.fillStyle = '#ffffff';
+    for (const c of cars) ctx.fillRect(toX(c.x) - 1.5, toZ(c.z) - 1.5, 3, 3);
+    // Police as blue squares.
+    ctx.fillStyle = '#4488ff';
+    for (const c of police) ctx.fillRect(toX(c.x) - 2.5, toZ(c.z) - 2.5, 5, 5);
+    // Player arrow (rotates with heading).
+    const px = toX(player.x);
+    const pz = toZ(player.z);
+    ctx.save();
+    ctx.translate(px, pz);
+    ctx.rotate(-player.heading);
+    ctx.fillStyle = '#2ecc71';
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.lineTo(4.5, 5);
+    ctx.lineTo(0, 2.5);
+    ctx.lineTo(-4.5, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
 }
