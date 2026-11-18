@@ -1,86 +1,65 @@
-// Solara Bay — the pistol. Hitscan from the camera, a tracer line, a
-// muzzle flash and sparks on impact. Shooting is a crime: it scares
-// pedestrians, adds heat, and can knock a pedestrian down or disable a
-// police cruiser.
-
+// Pistol combat: hitscan shots, tracers, muzzle flash.
 import * as THREE from 'three';
-import { CFG } from './config.js';
 
-export function createCombat(scene) {
-  const raycaster = new THREE.Raycaster();
-  raycaster.far = CFG.pistolRange;
-  const combat = {
-    cooldown: 0,
-  };
+function raySphere(origin, dir, center, r) {
+  const ox = center.x - origin.x, oy = center.y - origin.y, oz = center.z - origin.z;
+  const tca = ox * dir.x + oy * dir.y + oz * dir.z;
+  if (tca < 0) return -1;
+  const d2 = ox * ox + oy * oy + oz * oz - tca * tca;
+  if (d2 > r * r) return -1;
+  return tca - Math.sqrt(r * r - d2);
+}
 
-  combat.shoot = function (G) {
-    if (combat.cooldown > 0 || G.state !== 'playing' || G.player.car) return;
-    combat.cooldown = CFG.pistolRate;
-    const camera = G.camera;
-    const origin = new THREE.Vector3();
-    camera.getWorldPosition(origin);
+export class Combat {
+  constructor(scene, effects, audio) {
+    this.scene = scene;
+    this.effects = effects;
+    this.audio = audio;
+    this.cooldown = 0;
+    this.raycaster = new THREE.Raycaster();
+  }
+  update(dt) { this.cooldown = Math.max(0, this.cooldown - dt); }
+  shoot(camera, player, world, peds, wanted, policeCars) {
+    if (this.cooldown > 0 || player.inCar) return;
+    this.cooldown = 0.24;
+    const origin = camera.position.clone();
     const dir = new THREE.Vector3();
     camera.getWorldDirection(dir);
-    // muzzle sits just ahead of the player's gun hand
-    const muzzle = G.player.pos.clone();
-    muzzle.y = 1.4;
-    muzzle.addScaledVector(dir, 0.8);
-    raycaster.set(origin, dir);
-
-    // targets: pedestrians, police cruisers, other cars
-    const targets = [];
-    for (const p of G.peds.list) {
-      if (p.state !== 'down') targets.push({ obj: p.mesh, kind: 'ped', ref: p });
+    // muzzle position: just in front of the player
+    const fwd = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
+    const muzzle = player.pos.clone().add(new THREE.Vector3(0, 1.35, 0)).addScaledVector(fwd, 0.7);
+    let bestT = 70, bestPoint = origin.clone().addScaledVector(dir, 70), hit = null;
+    // peds
+    for (const p of peds.list) {
+      if (p.state === 'down') continue;
+      const c = p.pos.clone(); c.y = 1.1;
+      const t = raySphere(origin, dir, c, 0.85);
+      if (t > 0 && t < bestT) { bestT = t; hit = { type: 'ped', ped: p }; bestPoint = origin.clone().addScaledVector(dir, t); }
     }
-    for (const c of G.vehicles.police) {
-      if (c.active && !c.disabled) targets.push({ obj: c.mesh, kind: 'police', ref: c });
+    // police cars
+    for (const pc of policeCars) {
+      if (pc.disabled) continue;
+      const c = pc.pos.clone(); c.y = 1.0;
+      const t = raySphere(origin, dir, c, 2.3);
+      if (t > 0 && t < bestT) { bestT = t; hit = { type: 'police', car: pc }; bestPoint = origin.clone().addScaledVector(dir, t); }
     }
-    for (const c of G.vehicles.parked.concat(G.vehicles.traffic)) {
-      if (!c.disabled) targets.push({ obj: c.mesh, kind: 'car', ref: c });
-    }
-    const meshes = targets.map((t) => t.obj);
-    const hits = raycaster.intersectObjects(meshes, true);
-    let impact = origin.clone().addScaledVector(dir, CFG.pistolRange);
-    if (hits.length > 0) {
-      const hit = hits[0];
-      impact = hit.point.clone();
-      // walk up to the registered target group
-      let node = hit.object;
-      let found = null;
-      while (node) {
-        found = targets.find((t) => t.obj === node);
-        if (found) break;
-        node = node.parent;
+    this.effects.muzzle(muzzle);
+    this.effects.tracer(muzzle, bestPoint);
+    this.audio.shot();
+    if (hit) {
+      this.effects.burst(bestPoint.x, bestPoint.y, bestPoint.z, 0xff5533, 10, 4, 0.5, -5, 2);
+      if (hit.type === 'ped') {
+        peds.downAt(hit.ped.pos.x, hit.ped.pos.z, 3);
+        wanted.addCrime(1);
+      } else {
+        const dead = hit.car.damage(1);
+        wanted.addCrime(1);
+        if (dead) this.effects.burst(bestPoint.x, bestPoint.y + 0.5, bestPoint.z, 0x888888, 22, 5, 1.1, -2, 2);
       }
-      if (found) {
-        if (found.kind === 'ped') {
-          G.peds.knockDown(found.ref);
-          G.wanted.addHeat(1);
-        } else if (found.kind === 'police') {
-          G.vehicles.damageCar(found.ref, CFG.pistolDamage, G);
-          G.wanted.addHeat(1);
-        } else {
-          G.vehicles.damageCar(found.ref, 20, G);
-          G.wanted.addHeat(1);
-        }
-      }
-      G.effects.burst(impact, 0xffcc66, 10, 5, 0.5, 8);
     } else {
-      // no hit: sparks where the shot meets the ground or a wall
-      const gy = G.world.groundHeightAt(impact.x, impact.z);
-      impact.y = Math.max(impact.y, gy + 0.1);
+      // impact dust where the shot lands
+      this.effects.burst(bestPoint.x, Math.max(0.2, bestPoint.y), bestPoint.z, 0xcccccc, 5, 2, 0.4, -3, 1);
     }
-    G.effects.tracer(muzzle, impact);
-    G.effects.muzzle(muzzle);
-    G.audio.shot();
-    G.peds.fleeFrom(G.player.pos.x, G.player.pos.z, 26);
-    G.camKick = 0.035;
-  };
-
-  combat.update = function (dt, G) {
-    combat.cooldown = Math.max(0, combat.cooldown - dt);
-    if (G.input.mouseDown && G.state === 'playing') combat.shoot(G);
-  };
-
-  return combat;
+    peds.fleeFrom(bestPoint.x, bestPoint.z);
+  }
 }

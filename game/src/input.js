@@ -1,77 +1,35 @@
-// Solara Bay — keyboard and mouse input. One shared key-state object that
-// gameplay and the self-test both read, so scripted tests drive the exact
-// same code paths as a human player.
-
-export function createInput(canvas) {
-  const input = {
-    keys: Object.create(null), // code -> true while held
-    mouseDX: 0,
-    mouseDY: 0,
-    mouseDown: false,
-    locked: false,
-    // set by the self-test to inject synthetic keys
-    testKeys: null,
-  };
-
-  function isDown(code) {
-    if (input.testKeys && code in input.testKeys) return input.testKeys[code];
-    return !!input.keys[code];
+// Keyboard + mouse input state.
+export class Input {
+  constructor() {
+    this.keys = new Set();
+    this.mouseDX = 0; this.mouseDY = 0;
+    this.mouseDown = false;
+    this.clicked = false; // consumed by combat each frame
+    this.locked = false;
+    this.anyKey = false;
+    window.addEventListener('keydown', (e) => {
+      if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      this.keys.add(e.code); this.anyKey = true;
+    });
+    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) { this.mouseDown = true; this.clicked = true; }
+    });
+    window.addEventListener('mouseup', (e) => { if (e.button === 0) this.mouseDown = false; });
+    window.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement) { this.mouseDX += e.movementX; this.mouseDY += e.movementY; }
+    });
+    window.addEventListener('blur', () => this.keys.clear());
   }
-  input.isDown = isDown;
-
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'Tab') e.preventDefault();
-    input.keys[e.code] = true;
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
-  });
-  window.addEventListener('keyup', (e) => {
-    input.keys[e.code] = false;
-  });
-  window.addEventListener('blur', () => {
-    input.keys = Object.create(null);
-    input.mouseDown = false;
-  });
-
-  canvas.addEventListener('mousedown', (e) => {
-    if (e.button === 0) input.mouseDown = true;
-    if (!input.locked && document.pointerLockElement !== canvas) {
-      canvas.requestPointerLock?.();
-    }
-  });
-  window.addEventListener('mouseup', (e) => {
-    if (e.button === 0) input.mouseDown = false;
-  });
-  document.addEventListener('pointerlockchange', () => {
-    input.locked = document.pointerLockElement === canvas;
-  });
-  document.addEventListener('mousemove', (e) => {
-    if (input.locked) {
-      input.mouseDX += e.movementX || 0;
-      input.mouseDY += e.movementY || 0;
-    }
-  });
-
-  // Call once per frame: returns accumulated mouse movement, then clears it.
-  input.consumeMouse = function () {
-    const dx = input.mouseDX;
-    const dy = input.mouseDY;
-    input.mouseDX = 0;
-    input.mouseDY = 0;
-    return { dx, dy };
-  };
-
-  // Edge-triggered key: true once when the key goes down, then consumes it.
-  input.pressed = function (code) {
-    if (input.testKeys && input.testKeys[code]) {
-      input.testKeys[code] = false;
-      return true;
-    }
-    if (input.keys[code] === true) {
-      input.keys[code] = 'consumed';
-      return true;
-    }
+  down(...codes) { return codes.some((c) => this.keys.has(c)); }
+  pressed(code) { // edge-triggered once per frame via consume()
+    if (this.keys.has(code)) { this.keys.delete(code); return true; }
     return false;
-  };
-
-  return input;
+  }
+  consumeClick() { const c = this.clicked; this.clicked = false; return c; }
+  consumeMouse() { const dx = this.mouseDX, dy = this.mouseDY; this.mouseDX = 0; this.mouseDY = 0; return [dx, dy]; }
+  lockPointer(el) {
+    try { el.requestPointerLock(); this.locked = true; } catch { /* headless */ }
+  }
+  unlockPointer() { try { document.exitPointerLock(); } catch { /* noop */ } this.locked = false; }
 }

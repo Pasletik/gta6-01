@@ -1,126 +1,101 @@
-// Solara Bay — particles, tracers and muzzle flashes. One pooled point
-// cloud for sparks and smoke, plus a small pool of fading tracer lines,
-// so combat reads clearly without allocating geometry every shot.
-
+// Particles, tracers, muzzle flash, skid marks.
 import * as THREE from 'three';
 
-const MAX_PARTICLES = 400;
-const MAX_TRACERS = 12;
-
-export function createEffects(scene) {
-  const positions = new Float32Array(MAX_PARTICLES * 3);
-  const colors = new Float32Array(MAX_PARTICLES * 3);
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  const mat = new THREE.PointsMaterial({ size: 0.55, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false });
-  const points = new THREE.Points(geo, mat);
-  points.frustumCulled = false;
-  scene.add(points);
-
-  const parts = [];
-  for (let i = 0; i < MAX_PARTICLES; i++) {
-    parts.push({ alive: false, x: 0, y: -999, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, grav: 0 });
-    positions[i * 3 + 1] = -999;
+export class Effects {
+  constructor(scene) {
+    this.scene = scene;
+    this.parts = [];
+    this.poolSize = 240;
+    const geo = new THREE.BufferGeometry();
+    this.pos = new Float32Array(this.poolSize * 3);
+    this.col = new Float32Array(this.poolSize * 3);
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(this.col, 3));
+    const mat = new THREE.PointsMaterial({ size: 0.45, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false });
+    this.points = new THREE.Points(geo, mat);
+    this.points.frustumCulled = false;
+    scene.add(this.points);
+    for (let i = 0; i < this.poolSize; i++) this.parts.push({ life: 0, max: 1, vx: 0, vy: 0, vz: 0, x: 0, y: -100, z: 0, r: 1, g: 1, b: 1, grav: 0 });
+    this.cursor = 0;
+    // tracer pool (stretched additive boxes)
+    this.tracers = [];
+    const tmat = new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+    for (let i = 0; i < 10; i++) {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 1), tmat.clone());
+      m.visible = false; scene.add(m);
+      this.tracers.push({ mesh: m, life: 0 });
+    }
+    // muzzle flash light + sprite
+    this.flashLight = new THREE.PointLight(0xffc36a, 0, 18, 1.6);
+    scene.add(this.flashLight);
+    // skid marks
+    this.skids = [];
+    const smat = new THREE.MeshBasicMaterial({ color: 0x0a0a0a, transparent: true, opacity: 0.55, depthWrite: false });
+    this.skidMat = smat;
   }
-  let cursor = 0;
-
-  const tracers = [];
-  for (let i = 0; i < MAX_TRACERS; i++) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3));
-    const line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0 }));
-    line.frustumCulled = false;
-    scene.add(line);
-    tracers.push({ line, life: 0 });
+  burst(x, y, z, color, n, speed, life = 0.7, grav = -6, up = 2) {
+    const c = new THREE.Color(color);
+    for (let k = 0; k < n; k++) {
+      const p = this.parts[this.cursor]; this.cursor = (this.cursor + 1) % this.poolSize;
+      const a = Math.random() * Math.PI * 2, e = Math.random() * Math.PI - Math.PI / 2;
+      const s = speed * (0.4 + Math.random() * 0.8);
+      p.x = x; p.y = y; p.z = z;
+      p.vx = Math.cos(a) * Math.cos(e) * s; p.vy = Math.sin(e) * s + up; p.vz = Math.sin(a) * Math.cos(e) * s;
+      p.life = p.max = life * (0.6 + Math.random() * 0.7);
+      p.r = c.r; p.g = c.g; p.b = c.b; p.grav = grav;
+    }
   }
-  let tCursor = 0;
-
-  const flash = new THREE.PointLight(0xffc860, 0, 14, 1.6);
-  scene.add(flash);
-  let flashLife = 0;
-
-  function spawn(x, y, z, vx, vy, vz, life, r, g, b, grav) {
-    const p = parts[cursor];
-    cursor = (cursor + 1) % MAX_PARTICLES;
-    p.alive = true;
-    p.x = x; p.y = y; p.z = z;
-    p.vx = vx; p.vy = vy; p.vz = vz;
-    p.life = life;
-    p.maxLife = life;
-    p.grav = grav;
-    const idx = parts.indexOf(p);
-    colors[idx * 3] = r;
-    colors[idx * 3 + 1] = g;
-    colors[idx * 3 + 2] = b;
+  tracer(from, to) {
+    const t = this.tracers.find((x) => x.life <= 0) || this.tracers[0];
+    const m = t.mesh;
+    const mid = from.clone().add(to).multiplyScalar(0.5);
+    m.position.copy(mid);
+    m.lookAt(to);
+    m.scale.set(1, 1, from.distanceTo(to));
+    m.visible = true; m.material.opacity = 0.9;
+    t.life = 0.09;
   }
-
-  const effects = {
-    burst(pos, colorHex, count, speed, life = 0.7, grav = 9) {
-      const c = new THREE.Color(colorHex);
-      for (let i = 0; i < count; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const up = Math.random() * 0.9 + 0.2;
-        const s = speed * (0.4 + Math.random() * 0.8);
-        spawn(pos.x, pos.y, pos.z, Math.cos(a) * s, up * s, Math.sin(a) * s, life * (0.6 + Math.random() * 0.7), c.r, c.g, c.b, grav);
-      }
-    },
-    smoke(pos, count = 10) {
-      for (let i = 0; i < count; i++) {
-        spawn(
-          pos.x + (Math.random() - 0.5), pos.y + Math.random() * 0.5, pos.z + (Math.random() - 0.5),
-          (Math.random() - 0.5) * 0.8, 1 + Math.random() * 1.2, (Math.random() - 0.5) * 0.8,
-          1.4 + Math.random(), 0.25, 0.25, 0.25, -1.5,
-        );
-      }
-    },
-    tracer(from, to) {
-      const t = tracers[tCursor];
-      tCursor = (tCursor + 1) % MAX_TRACERS;
-      const arr = t.line.geometry.attributes.position.array;
-      arr[0] = from.x; arr[1] = from.y; arr[2] = from.z;
-      arr[3] = to.x; arr[4] = to.y; arr[5] = to.z;
-      t.line.geometry.attributes.position.needsUpdate = true;
-      t.line.material.opacity = 0.95;
-      t.life = 0.09;
-    },
-    muzzle(pos) {
-      flash.position.copy(pos);
-      flash.intensity = 60;
-      flashLife = 0.06;
-    },
-    update(dt) {
-      for (let i = 0; i < MAX_PARTICLES; i++) {
-        const p = parts[i];
-        if (!p.alive) continue;
+  muzzle(pos) {
+    this.flashLight.position.copy(pos);
+    this.flashLight.intensity = 26;
+    this.burst(pos.x, pos.y, pos.z, 0xffc36a, 6, 3, 0.18, 0, 1);
+  }
+  skid(x, z, angle) {
+    if (this.skids.length > 46) {
+      const old = this.skids.shift();
+      this.scene.remove(old);
+    }
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.35, 1.6), this.skidMat);
+    m.rotation.x = -Math.PI / 2; m.rotation.z = angle;
+    m.position.set(x, 0.06, z);
+    this.scene.add(m);
+    this.skids.push(m);
+  }
+  update(dt) {
+    for (let i = 0; i < this.poolSize; i++) {
+      const p = this.parts[i];
+      if (p.life > 0) {
         p.life -= dt;
-        if (p.life <= 0) {
-          p.alive = false;
-          positions[i * 3 + 1] = -999;
-          continue;
-        }
-        p.vy -= p.grav * dt;
-        p.x += p.vx * dt;
-        p.y += p.vy * dt;
-        p.z += p.vz * dt;
-        if (p.y < 0.05) { p.y = 0.05; p.vy = 0; p.vx *= 0.6; p.vz *= 0.6; }
-        positions[i * 3] = p.x;
-        positions[i * 3 + 1] = p.y;
-        positions[i * 3 + 2] = p.z;
+        p.vy += p.grav * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+        if (p.y < 0.05) { p.y = 0.05; p.vy *= -0.3; }
       }
-      geo.attributes.position.needsUpdate = true;
-      geo.attributes.color.needsUpdate = true;
-      for (const t of tracers) {
-        if (t.life > 0) {
-          t.life -= dt;
-          t.line.material.opacity = Math.max(0, t.life / 0.09) * 0.95;
-        }
+      const j = i * 3;
+      if (p.life > 0) {
+        this.pos[j] = p.x; this.pos[j + 1] = p.y; this.pos[j + 2] = p.z;
+        const f = p.life / p.max;
+        this.col[j] = p.r * f; this.col[j + 1] = p.g * f; this.col[j + 2] = p.b * f;
+      } else { this.pos[j + 1] = -100; }
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+    this.points.geometry.attributes.color.needsUpdate = true;
+    for (const t of this.tracers) {
+      if (t.life > 0) {
+        t.life -= dt;
+        t.mesh.material.opacity = Math.max(0, t.life / 0.09) * 0.9;
+        if (t.life <= 0) t.mesh.visible = false;
       }
-      if (flashLife > 0) {
-        flashLife -= dt;
-        if (flashLife <= 0) flash.intensity = 0;
-      }
-    },
-  };
-  return effects;
+    }
+    if (this.flashLight.intensity > 0) this.flashLight.intensity = Math.max(0, this.flashLight.intensity - dt * 320);
+  }
 }
