@@ -1,87 +1,103 @@
-// Solara Bay — shared constants and tuning for the whole game.
-// One job: every number the other modules agree on lives here.
+// Solara Bay — tuning constants and mission definitions.
+// One place for every number the rest of the game reads, so balancing
+// never means hunting through gameplay code.
 
 export const CFG = {
-  // City layout: a 7x7 road grid. Block size and road width in world units.
-  gridN: 7,
-  blockSize: 46,
-  roadWidth: 12,
-  // City spans from -span/2 to +span/2 on both axes.
-  span: 7 * 46 + 8 * 12, // 418
-  // Sea sits south (negative z beyond the city edge); beach strip in between.
-  beachDepth: 26,
-  // Player / car tuning.
+  // City layout: 7 roads each way, 48 units apart, city spans -168..168.
+  roadSpacing: 48,
+  roadHalf: 6, // half-width of a road surface
+  roadCount: 7, // roads at -144..144 step 48
+  cityHalf: 168,
+  blockSize: 36,
+  // South edge: beach strip, then ocean. East edge: docks.
+  beachStart: 150,
+  sandDepth: 18,
+  oceanY: -1.4,
+  pierX: 132,
+  pierZ0: 156,
+  pierZ1: 208,
+  // Player
   walkSpeed: 9,
-  runSpeed: 14,
-  carAccel: 26,
-  carBrake: 42,
+  runSpeed: 13,
+  playerRadius: 0.9,
+  playerHealth: 100,
+  // Cars
+  carAccel: 22,
+  carBrake: 34,
   carMaxSpeed: 34,
   carReverseMax: 10,
   carTurn: 1.9,
-  // Combat.
+  trafficCount: 10,
+  trafficSpeed: 11,
+  parkedCount: 9,
+  policeMax: 4,
+  policeSpeed: 30,
+  // Combat
   pistolDamage: 34,
   pistolRange: 90,
-  pistolCooldown: 0.22,
-  playerMaxHealth: 100,
-  // Wanted.
+  pistolRate: 0.22, // seconds between shots
+  policeCarHealth: 120,
+  // Wanted
   wantedDecaySeconds: 26,
-  maxWanted: 3,
-  // Money.
-  missionRewards: [500, 1200, 2000],
-  // Traffic and pedestrians.
-  trafficCount: 14,
-  pedCount: 22,
-  // Rendering.
-  fogNear: 120,
-  fogFar: 520,
-  daySky: 0x8ec9e8,
-  sunColor: 0xfff2d0,
-  // Save key.
-  saveKey: 'solara-bay-save-v1',
+  arrestDistance: 3.2,
+  arrestHoldSeconds: 1.6,
+  // Camera
+  camDistance: 9,
+  camHeight: 4.2,
+  // Minimap
+  minimapSize: 168,
 };
 
-// Named places, in world coordinates. The city centre is (0, 0).
-export const PLACES = {
-  // Docks pier sticks out into the sea at the south edge.
-  docks: { x: -120, z: -236 },
-  // Safehouse for mission 3, on the beach at the east end.
-  safehouse: { x: 150, z: -222 },
-  // Central park occupies the middle block.
-  park: { x: 0, z: 0 },
-  // Player spawns on the sidewalk near the south-west corner.
-  spawn: { x: -150, z: -150 },
-};
-
-// Mission script: id, title, objective text, reward.
+// Story missions, in order. Each has a beacon target, an action prompt and a reward.
 export const MISSIONS = [
   {
     id: 'wheels-up',
-    title: 'Wheels Up',
-    objective: 'Steal a car — press E near any car',
-    reward: CFG.missionRewards[0],
+    name: 'Wheels Up',
+    giver: 'Rosa Delgado',
+    briefing: 'Rosa needs a getaway car. Steal the blue coupe waiting on the docks pier and bring it to the marked garage.',
+    steps: [
+      { kind: 'go', label: 'Get to the docks pier', pos: [132, 0, 182] },
+      { kind: 'steal', label: 'Steal the blue coupe on the pier', pos: [132, 0, 182] },
+      { kind: 'drive', label: 'Drive the coupe to the garage', pos: [-120, 0, -120] },
+    ],
+    reward: 500,
   },
   {
     id: 'the-package',
-    title: 'The Package',
-    objective: 'Pick up the package on the docks pier, on foot',
-    reward: CFG.missionRewards[1],
+    name: 'The Package',
+    giver: 'Rosa Delgado',
+    briefing: 'A package is stashed under the big oak in the central park. Pick it up and deliver it to Rosa at the Marlin Bar.',
+    steps: [
+      { kind: 'go', label: 'Pick up the package in the park', pos: [0, 0, 0] },
+      { kind: 'go', label: 'Deliver it to the Marlin Bar', pos: [72, 0, 72] },
+    ],
+    reward: 1200,
   },
   {
     id: 'heat-wave',
-    title: 'Heat Wave',
-    objective: 'Lose the heat — reach the safehouse on the beach',
-    reward: CFG.missionRewards[2],
+    name: 'Heat Wave',
+    giver: 'Rosa Delgado',
+    briefing: 'The whole Solara Bay force is on you. Lose the heat: reach the beach safehouse with 3 stars on your head.',
+    steps: [
+      { kind: 'heat', label: 'Get the heat to 3 stars, then reach the beach safehouse', pos: [0, 0, 164] },
+    ],
+    reward: 2000,
   },
 ];
 
-// Car paint palette (hex). Traffic and the player share it.
-export const CAR_COLORS = [
-  0xc0392b, 0x2471a3, 0xf1c40f, 0x27ae60, 0x8e44ad,
-  0xe67e22, 0xecf0f1, 0x2c3e50, 0x16a085, 0xd35400,
-];
-
-// Pedestrian shirt palette.
-export const PED_COLORS = [
-  0xe74c3c, 0x3498db, 0x2ecc71, 0xf39c12, 0x9b59b6,
-  0x1abc9c, 0xe67e22, 0xfd79a8, 0x00cec9, 0x6c5ce7,
-];
+export const PALETTE = {
+  sky: 0x8ec9e8,
+  sun: 0xfff2cf,
+  road: 0x3a3f46,
+  roadLine: 0xf5d76e,
+  sidewalk: 0x9aa0a3,
+  grass: 0x58a447,
+  sand: 0xe6cf9a,
+  water: 0x2e7fa8,
+  pier: 0x8a6b4a,
+  building: [0xd8c9b0, 0xc9b8a3, 0xb7c4cc, 0xe0d6c2, 0xc4a484, 0xa8b8c8, 0xd9b8a6],
+  glass: 0x9fc6dd,
+  playerJacket: 0xe2553a,
+  police: 0x1e3a5f,
+  taxi: 0xf2c200,
+};

@@ -1,9 +1,10 @@
-// Solara Bay — deterministic randomness. One job: every random choice in the
-// game comes from a seeded generator so ?seed=1 always builds the same city.
+// Solara Bay — deterministic random numbers. Every random choice in the
+// world (building heights, colours, traffic, pedestrians) comes from a
+// seed, so ?seed=1 always builds the same city and the same screenshots.
 
 export function mulberry32(seed) {
   let a = seed >>> 0;
-  return function next() {
+  return function () {
     a |= 0;
     a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
@@ -12,40 +13,30 @@ export function mulberry32(seed) {
   };
 }
 
-// Small helper bag around one generator instance.
-export class Rng {
-  constructor(seed) {
-    this.next = mulberry32(seed);
-  }
-
-  // Float in [min, max).
-  range(min, max) {
-    return min + this.next() * (max - min);
-  }
-
-  // Integer in [min, max] inclusive.
-  int(min, max) {
-    return Math.floor(this.range(min, max + 1));
-  }
-
-  // Pick one element of an array.
-  pick(arr) {
-    return arr[Math.floor(this.next() * arr.length)];
-  }
-
-  // True with probability p.
-  chance(p) {
-    return this.next() < p;
-  }
+export function range(rng, min, max) {
+  return min + rng() * (max - min);
 }
 
-// Read ?seed= from the page URL; default 1. Deterministic unless asked.
-export function seedFromUrl() {
-  try {
-    const v = new URLSearchParams(window.location.search).get('seed');
-    const n = v === null ? 1 : parseInt(v, 10);
-    return Number.isFinite(n) ? n : 1;
-  } catch (e) {
-    return 1;
+export function rangeInt(rng, min, max) {
+  return Math.floor(range(rng, min, max + 1));
+}
+
+export function pick(rng, arr) {
+  return arr[Math.floor(rng() * arr.length)];
+}
+
+export function chance(rng, p) {
+  return rng() < p;
+}
+
+// A tiny shuffle that stays deterministic under the same seed.
+export function shuffle(rng, arr) {
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    const t = out[i];
+    out[i] = out[j];
+    out[j] = t;
   }
+  return out;
 }

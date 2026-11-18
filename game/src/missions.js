@@ -1,106 +1,147 @@
-// Solara Bay — the story. One job: run the three missions in order, track
-// the beacon marker, and pay the rewards.
+// Solara Bay — the story. Three missions in order, each a chain of steps
+// with a beacon in the world and a HUD objective line. Rewards are cash;
+// finishing all three ends the story.
 
 import * as THREE from 'three';
-import { MISSIONS, PLACES } from './config.js';
+import { MISSIONS } from './config.js';
+import { makeCarMesh } from './vehicles.js';
 
-export class MissionManager {
-  constructor(scene) {
-    this.scene = scene;
-    this.index = 0; // 0, 1, 2 — or 3 when the story is done
-    this.done = false;
-    this.packagePicked = false;
-    // Beacon: a glowing pillar of light plus a floating diamond over the target.
-    const beaconMat = new THREE.MeshBasicMaterial({
-      color: 0xf1c40f, transparent: true, opacity: 0.28, depthWrite: false,
-    });
-    this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 60, 16, 1, true), beaconMat);
-    this.beacon.position.y = 30;
-    scene.add(this.beacon);
-    const diamondMat = new THREE.MeshBasicMaterial({ color: 0xf1c40f });
-    this.diamond = new THREE.Mesh(new THREE.OctahedronGeometry(0.9), diamondMat);
-    scene.add(this.diamond);
-    // The package itself: a small crate on the pier.
-    const crateMat = new THREE.MeshLambertMaterial({ color: 0x8a6a45 });
-    this.package = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.8, 1.1), crateMat);
-    this.package.position.set(PLACES.docks.x, 0.9, PLACES.docks.z - 20);
-    this.package.castShadow = true;
-    scene.add(this.package);
-    this.updateBeacon();
+export function createMissions(G) {
+  const scene = G.scene;
+  // beacon: a pillar of light, a ground ring and a floating diamond
+  const beacon = new THREE.Group();
+  const pillar = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.1, 1.6, 42, 12, 1, true),
+    new THREE.MeshBasicMaterial({ color: 0xf2c200, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  pillar.position.y = 21;
+  beacon.add(pillar);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(2.2, 3, 24),
+    new THREE.MeshBasicMaterial({ color: 0xf2c200, transparent: true, opacity: 0.9, side: THREE.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.15;
+  beacon.add(ring);
+  const gem = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.9),
+    new THREE.MeshBasicMaterial({ color: 0xffe066 }),
+  );
+  gem.position.y = 4;
+  beacon.add(gem);
+  beacon.visible = false;
+  scene.add(beacon);
+
+  const missions = {
+    index: 0,
+    step: 0,
+    done: false,
+    missionCar: null,
+    beacon,
+  };
+
+  function currentMission() {
+    return MISSIONS[missions.index];
+  }
+  function currentStep() {
+    const m = currentMission();
+    return m ? m.steps[missions.step] : null;
+  }
+  missions.currentObjective = function () {
+    if (missions.done) return 'All missions complete — Solara Bay is yours, Dante.';
+    const m = currentMission();
+    const s = currentStep();
+    return m && s ? `${m.name}: ${s.label}` : '';
+  };
+
+  function placeBeacon(x, z) {
+    beacon.position.set(x, 0, z);
+    beacon.visible = true;
   }
 
-  current() {
-    return MISSIONS[this.index] || null;
+  function startStep() {
+    const s = currentStep();
+    if (!s) return;
+    placeBeacon(s.pos[0], s.pos[2]);
+    G.hud.toast(`${currentMission().name} — ${s.label}`);
   }
 
-  // Where the player must go right now (world x/z), or null.
-  marker() {
-    if (this.done) return null;
-    if (this.index === 0) return null; // any car counts — no fixed point
-    if (this.index === 1) return { x: PLACES.docks.x, z: PLACES.docks.z - 20 };
-    return { x: PLACES.safehouse.x, z: PLACES.safehouse.z };
-  }
-
-  updateBeacon() {
-    const m = this.marker();
-    const show = !!m;
-    this.beacon.visible = show;
-    this.diamond.visible = show;
-    if (show) {
-      this.beacon.position.x = m.x;
-      this.beacon.position.z = m.z;
-      this.diamond.position.set(m.x, 6, m.z);
+  function startMission(i) {
+    missions.index = i;
+    missions.step = 0;
+    const m = currentMission();
+    G.hud.banner(m.name, m.briefing);
+    if (m.id === 'wheels-up') {
+      // the blue coupe waiting on the pier
+      const mesh = makeCarMesh(0x2e7fa8, false);
+      mesh.position.set(132, 0.5, 182);
+      mesh.rotation.y = Math.PI;
+      scene.add(mesh);
+      missions.missionCar = { mesh, x: 132, z: 182, heading: Math.PI, speed: 0, health: 100, isPolice: false, active: false, disabled: false, isMission: true };
+      G.vehicles.parked.push(missions.missionCar);
     }
-    // The package is only visible during mission 2, until picked up.
-    this.package.visible = this.index === 1 && !this.packagePicked;
-  }
-
-  // Mission 1 completes when the player gets into a car.
-  onEnterCar() {
-    if (this.index === 0) return this.complete();
-    return 0;
-  }
-
-  // Mission 2 completes when the player, on foot, reaches the package.
-  onReachPackage() {
-    if (this.index === 1 && !this.packagePicked) {
-      this.packagePicked = true;
-      return this.complete();
+    if (m.id === 'heat-wave') {
+      G.wanted.setLevel(3);
     }
-    return 0;
+    startStep();
   }
 
-  // Mission 3 completes at the safehouse.
-  onReachSafehouse() {
-    if (this.index === 2) return this.complete();
-    return 0;
-  }
+  missions.start = function () {
+    missions.index = 0;
+    missions.step = 0;
+    missions.done = false;
+    startMission(0);
+  };
 
-  complete() {
-    const reward = MISSIONS[this.index].reward;
-    this.index += 1;
-    if (this.index >= MISSIONS.length) this.done = true;
-    this.updateBeacon();
-    return reward;
-  }
+  // Continue from a save: jump straight into a later mission, fresh step 0.
+  missions.restore = function (index) {
+    startMission(index);
+  };
 
-  // Animate the beacon and the floating diamond.
-  update(dt, time) {
-    if (this.beacon.visible) {
-      this.diamond.rotation.y += dt * 1.5;
-      this.diamond.position.y = 6 + Math.sin(time * 2) * 0.5;
-      this.beacon.material.opacity = 0.2 + Math.sin(time * 2.4) * 0.08;
+  missions.completeStep = function () {
+    missions.step += 1;
+    const m = currentMission();
+    if (missions.step >= m.steps.length) {
+      // mission complete
+      G.player.money += m.reward;
+      G.audio.missionDone();
+      G.hud.toast(`Mission complete: ${m.name} — +$${m.reward}`);
+      G.save();
+      if (missions.index + 1 >= MISSIONS.length) {
+        missions.done = true;
+        beacon.visible = false;
+        G.onAllMissionsDone();
+        return;
+      }
+      startMission(missions.index + 1);
+      return;
     }
-    if (this.package.visible) {
-      this.package.rotation.y += dt * 0.8;
-    }
-  }
+    startStep();
+  };
 
-  // Jump the story to a mission (used by scripted screenshot scenes).
-  setIndex(i) {
-    this.index = i;
-    this.done = i >= MISSIONS.length;
-    this.packagePicked = i > 1;
-    this.updateBeacon();
-  }
+  missions.update = function (dt) {
+    if (missions.done || G.state !== 'playing') return;
+    // beacon pulse
+    const t = G.time;
+    const s = 1 + Math.sin(t * 3) * 0.12;
+    ring.scale.set(s, s, 1);
+    gem.rotation.y += dt * 2;
+    gem.position.y = 4 + Math.sin(t * 2) * 0.4;
+    const step = currentStep();
+    if (!step) return;
+    const px = G.player.pos.x;
+    const pz = G.player.pos.z;
+    const dist = Math.hypot(px - step.pos[0], pz - step.pos[2]);
+    if (step.kind === 'go' && dist < 4.5) {
+      missions.completeStep();
+    } else if (step.kind === 'steal' && G.player.car === missions.missionCar) {
+      missions.completeStep();
+    } else if (step.kind === 'drive' && G.player.car === missions.missionCar && dist < 7) {
+      missions.completeStep();
+    } else if (step.kind === 'heat' && G.wanted.level >= 3 && dist < 8) {
+      missions.completeStep();
+    }
+  };
+
+  return missions;
 }

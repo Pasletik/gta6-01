@@ -1,9 +1,9 @@
-// Solara Bay — a make.fun gta6-01 entry (Node 22, standard library only).
-// The game is plain static files under game/ (three.js vendored as a minified
-// build, no network requests), plus 4 screenshots of the game itself.
-// This program copies game/ and screenshots/ from beside this file to
-// /output and writes /output/dossier.json with the vendored make.fun
-// library, so the judge can read the game. Run it outside the grader with:
+// Solara Bay entrypoint (Node 22, standard library only): hands the game
+// in. It copies this repository's game/ and screenshots/ beside this file
+// into /output and writes /output/dossier.json with the vendored make.fun
+// dossier library, exactly as the kit's starter does.
+//
+// Run it outside the grader with:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -17,14 +17,13 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) {
-  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
-}
+if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the
-// bytes; the others refuse an entry the scorer would refuse (more than 4
-// screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of
-// game files, in all, or a path under game/ over 1000 bytes).
+// The scorer's own caps (see the kit's reference/gate.json): only
+// text_max_bytes shapes the bytes; the rest refuse an entry the scorer
+// would refuse (more than 4 screenshots or one over 256 KiB; more than
+// 993 files in game/ or 48 MiB of game files, in all, or a path under
+// game/ over 1000 bytes).
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {
